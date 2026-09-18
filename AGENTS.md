@@ -1,62 +1,61 @@
-# Repository Guidelines
+# Instrucciones para agentes
 
-## Project Structure & Module Organization
+Estas reglas aplican a todo el repositorio.
 
-NDevScrap is a Python, API-first scraping project designed to run unchanged on
-local machines and in Docker-based headless environments. The implementation is
-being bootstrapped; follow this target layout as files are added:
+## Antes de modificar
 
-- `src/ndevscrap/`: CLI, shared contracts, transport adapters, and scrapers.
-- `tests/`: pytest tests and offline fixtures such as `tests/fixtures/site.json`.
-- `output/`: generated JSON or JSONL results; keep it out of version control.
-- `Dockerfile`: portable runtime image. Keep provider-specific deployment files
-  separate from scraper logic.
+1. Lea `README.md`, `docs/architecture.md` y los ADR aceptados.
+2. Lea `docs/sdd/README.md` y localice la iniciativa activa.
+3. No implemente un scraper ni un cambio funcional si su `spec.md` y `plan.md`
+   no están completos y la iniciativa no tiene estado `approved` o
+   `in-progress`.
+4. Si no existe una iniciativa adecuada, créela y deténgase en la aprobación
+   antes de escribir código de producto.
 
-Organize one scraper per module, for example
-`src/ndevscrap/scrapers/catalog.py`. Prefer API or static HTML extraction with
-`requests`; introduce `httpx` for asynchronous or advanced HTTP needs, and use
-Playwright only where a real browser is necessary.
+## Estructura y límites
 
-## Build, Test, and Development Commands
+- `src/ndevscrap/`: CLI, contratos, adaptadores de transporte y conectores.
+- `tests/`: pruebas pytest y fixtures HTML o JSON sanitizadas.
+- `docs/`: arquitectura, ADR e iniciativas SDD.
+- `scripts/`: herramientas de desarrollo sin lógica de scraping.
+- `output/`: resultados generados; nunca se versionan.
 
-The planned toolchain uses `uv` and a `pyproject.toml`. Once introduced, run:
+Separe extracción, ejecución, configuración y almacenamiento. Prefiera API o
+HTML estático; use Playwright únicamente cuando sea necesario y manténgalo detrás
+del contrato del conector.
+
+## Durante el trabajo
+
+- Mantenga el alcance limitado a la iniciativa y sus tareas.
+- Conserve trazabilidad entre requisitos, tareas, pruebas y validación.
+- Actualice el SDD antes de introducir una desviación relevante.
+- Use Python 3.12, type hints en interfaces públicas y funciones pequeñas con
+  manejo explícito de errores.
+- Use `snake_case` para módulos, funciones y variables, y `PascalCase` para
+  clases. Deje el formato y lint a Ruff.
+- Nombre pruebas como `test_<module>.py` y `test_<behavior>()`.
+- Pruebe parsing, normalización, errores, idempotencia y contratos de salida con
+  fixtures locales; la suite determinista no depende de sitios reales.
+- No agregue secretos ni resultados sensibles. Documente nueva configuración en
+  `.env.example`.
+- No revierta cambios ajenos sin autorización.
+
+## Comandos de validación
 
 ```bash
-uv sync                              # Install locked dependencies
-uv run ndevscrap run <scraper> --output output/result.jsonl
-uv run pytest                        # Run the offline test suite
-uv run ruff check .                  # Lint
-uv run ruff format --check .         # Verify formatting
-docker build -t ndevscrap .          # Build the headless image
+uv sync --all-groups
+python scripts/validate_repository.py
+python scripts/validate_repository.py --self-test
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
 ```
 
-Use the same CLI command in Docker; the runtime may change, but scraper
-behavior and output contracts must not.
+## Al finalizar
 
-## Coding Style & Naming Conventions
-
-Use Python with four-space indentation, type hints for public interfaces, and
-small functions with explicit error handling. Use `snake_case` for modules,
-functions, variables, and CLI options; use `PascalCase` for classes. Let Ruff
-enforce formatting and linting rather than hand-formatting around its rules.
-
-## Testing Guidelines
-
-Use pytest. Name test files `test_<module>.py` and test functions
-`test_<behavior>()`. Test parsing, normalization, error handling, exit codes,
-and JSON/JSONL output with saved HTML or JSON fixtures. Do not make the test
-suite depend on live sites; no coverage threshold has been set yet.
-
-## Commits, Pull Requests, and Security
-
-The current history uses Conventional Commit-style messages, e.g.
-`docs: add project README`; follow `feat:`, `fix:`, `test:`, `refactor:`, or
-`docs:` with an imperative summary. Keep commits focused. PRs should explain
-the scraper or runtime change, list validation commands run, link the relevant
-issue when available, and include sample sanitized output for user-visible
-changes.
-
-Store URLs, tokens, limits, and credentials in environment variables. Keep
-`.env` private, update `.env.example` for new settings, respect site terms and
-`robots.txt` where applicable, and implement timeouts, rate limits, bounded
-retries, and useful logs.
+- Complete `validation.md` con evidencia reproducible.
+- Cambie el estado a `done` sólo si todos los criterios están satisfechos.
+- Use commits convencionales, enfocados y con resumen imperativo.
+- En el pull request enlace el SDD, enumere validaciones y use muestras
+  sanitizadas cuando cambie una salida visible.
+- Si sincroniza o actualiza un fork, use operaciones seguras y nunca force push.

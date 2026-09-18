@@ -1,4 +1,13 @@
-# Environment and secrets
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+
+# Local configuration and secrets
 .env
 .env.*
 !.env.example
@@ -6,13 +15,12 @@
 # Generated scraper output
 output/
 
-# Python tooling
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.ruff_cache/
-.venv/
-
 # Browser automation artifacts
 playwright-report/
 test-results/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

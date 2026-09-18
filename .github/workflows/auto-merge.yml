@@ -20,9 +20,10 @@ jobs:
       - name: Enable auto-merge when requirements complete
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          if gh pr view "$PR_NUMBER" --json autoMergeRequest --jq '.autoMergeRequest != null' | grep -qx true; then
+          if gh pr view "$PR_NUMBER" --repo "$GH_REPO" --json autoMergeRequest --jq '.autoMergeRequest != null' | grep -qx true; then
             exit 0
           fi
-          gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
+          gh pr merge "$PR_NUMBER" --repo "$GH_REPO" --auto --squash --delete-branch
