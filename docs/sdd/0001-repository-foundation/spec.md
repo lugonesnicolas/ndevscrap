@@ -38,8 +38,8 @@ infraestructura productiva y el primer scraper.
 - `REQ-003`: colaboradores y agentes deben encontrar un workflow inequívoco.
 - `REQ-004`: CI debe validar estructura SDD, enlaces y formato básico sin
   dependencias externas.
-- `REQ-005`: las comprobaciones Python deben activarse automáticamente cuando
-  aparezca `pyproject.toml`.
+- `REQ-005`: la validación documental debe convivir con la CI Python sin
+  duplicar la ejecución de pytest y Ruff.
 
 ## Restricciones
 
@@ -55,5 +55,5 @@ infraestructura productiva y el primer scraper.
 - `AC-003`: el paquete SDD de referencia supera el mismo validador que futuros
   paquetes.
 - `AC-004`: un paquete incompleto falla con un mensaje accionable.
-- `AC-005`: CI omite explícitamente los controles Python mientras no exista
-  `pyproject.toml`.
+- `AC-005`: workflows separados validan documentación y proyecto Python sin
+  ejecutar dos veces pytest o Ruff.

@@ -6,13 +6,13 @@ Este documento describe el flujo cotidiano. La arquitectura normativa está en
 
 ## 1. Preparar el entorno
 
-En la etapa documental sólo se requiere Git y Python 3.11 o posterior para el
-validador. Cuando exista el proyecto Python se usará `uv` para gestionar el
-entorno y las dependencias.
+Se requiere Git, Python 3.12 y `uv`. El proyecto y sus dependencias de desarrollo
+se definen en `pyproject.toml`.
 
 Antes de comenzar:
 
 ```bash
+uv sync --all-groups
 python scripts/validate_repository.py
 git status --short
 ```
@@ -53,7 +53,7 @@ python scripts/validate_repository.py
 python scripts/validate_repository.py --self-test
 ```
 
-Cuando exista `pyproject.toml`, ejecute además:
+Ejecute además las comprobaciones del proyecto Python:
 
 ```bash
 uv run pytest

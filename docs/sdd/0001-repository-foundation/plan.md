@@ -8,8 +8,8 @@
   únicamente para cambios triviales.
 - `DES-003`: implementar validación con la biblioteca estándar de Python para no
   agregar dependencias.
-- `DES-004`: usar un único workflow de GitHub Actions con pasos Python
-  condicionales a la existencia de `pyproject.toml`.
+- `DES-004`: mantener la validación documental en `quality.yml` y delegar pytest
+  y Ruff al workflow `ci.yml` incorporado por la rama base.
 
 ## Contratos
 
@@ -39,7 +39,8 @@ comprueba que un paquete incompleto sea rechazado.
 - Ejecutar el validador sobre el paquete `0001` para `REQ-002` y `AC-003`.
 - Ejecutar `--self-test` para `REQ-004` y `AC-004`.
 - Revisar todos los enlaces locales para `REQ-001`, `REQ-003` y `AC-001`.
-- Inspeccionar la rama condicional de CI para `REQ-005` y `AC-005`.
+- Inspeccionar que `quality.yml` no duplique los controles de `ci.yml` para
+  `REQ-005` y `AC-005`.
 
 ## Despliegue
 

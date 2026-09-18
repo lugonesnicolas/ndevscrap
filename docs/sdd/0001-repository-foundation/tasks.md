@@ -11,5 +11,6 @@
   para `REQ-003`.
 - [x] `TASK-005` Implementar validador y self-test para `REQ-004` según
   `DES-003`.
-- [x] `TASK-006` Crear CI condicional para `REQ-005` según `DES-004`.
+- [x] `TASK-006` Integrar la validación documental con la CI Python para
+  `REQ-005` según `DES-004`.
 - [x] `TASK-007` Registrar evidencia para `AC-001` a `AC-005`.

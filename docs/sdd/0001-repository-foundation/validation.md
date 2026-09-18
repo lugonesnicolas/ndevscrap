@@ -10,8 +10,8 @@ La iniciativa cumple los criterios y queda lista para cerrar.
   y enlaces locales.
 - `python scripts/validate_repository.py --self-test` crea un paquete temporal
   incompleto y confirma que se rechaza con errores accionables.
-- `.github/workflows/quality.yml` ejecuta el validador y omite con un mensaje
-  explícito los pasos Python cuando falta `pyproject.toml`.
+- `.github/workflows/quality.yml` ejecuta sólo el validador documental y
+  `.github/workflows/ci.yml` concentra pytest y Ruff.
 
 ## Criterios de aceptación
 
@@ -20,8 +20,8 @@ La iniciativa cumple los criterios y queda lista para cerrar.
   decisiones.
 - `AC-003`: satisfecho; el paquete `0001` usa y supera las reglas comunes.
 - `AC-004`: satisfecho; el self-test exige y verifica un fallo accionable.
-- `AC-005`: satisfecho; CI detecta `pyproject.toml` antes de instalar o ejecutar
-  herramientas Python.
+- `AC-005`: satisfecho; los workflows separan validación documental y controles
+  Python sin duplicar pytest ni Ruff.
 
 ## Desviaciones
 

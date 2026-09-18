@@ -10,7 +10,6 @@ import tempfile
 from pathlib import Path
 from urllib.parse import unquote
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SDD_ROOT = ROOT / "docs" / "sdd"
 VALID_STATUSES = {"draft", "approved", "in-progress", "validation", "done"}
@@ -172,9 +171,7 @@ def validate_sdd(root: Path) -> list[str]:
     if not root.exists():
         return [f"{root}: no existe el directorio SDD"]
     packages = [
-        path
-        for path in root.iterdir()
-        if path.is_dir() and path.name != "templates"
+        path for path in root.iterdir() if path.is_dir() and path.name != "templates"
     ]
     if not packages:
         return [f"{root}: debe contener al menos una iniciativa SDD"]
@@ -204,9 +201,7 @@ def validate_markdown() -> list[str]:
 
         for raw_target in LINK_PATTERN.findall(text):
             target = raw_target.strip().split(maxsplit=1)[0].strip("<>")
-            if not target or target.startswith(
-                ("#", "http://", "https://", "mailto:")
-            ):
+            if not target or target.startswith(("#", "http://", "https://", "mailto:")):
                 continue
             relative_target = unquote(target.split("#", 1)[0])
             resolved = (path.parent / relative_target).resolve()
@@ -253,9 +248,7 @@ def main() -> int:
         errors = run_self_test()
     else:
         errors = (
-            validate_repository_files()
-            + validate_markdown()
-            + validate_sdd(SDD_ROOT)
+            validate_repository_files() + validate_markdown() + validate_sdd(SDD_ROOT)
         )
 
     if errors:

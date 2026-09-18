@@ -15,6 +15,10 @@ htmlcov/
 # Generated scraper output
 output/
 
+# Browser automation artifacts
+playwright-report/
+test-results/
+
 # Editors and operating systems
 .idea/
 .vscode/

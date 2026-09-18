@@ -5,8 +5,9 @@ tiendas y plataformas con contratos consistentes. El proyecto prioriza APIs y
 HTML estático, reserva el navegador para los casos que realmente lo necesitan y
 mantiene separadas la extracción, la ejecución y la persistencia.
 
-El repositorio está en su etapa de fundación documental. Aún no contiene el
-primer scraper ni el runtime Python; esas piezas se incorporarán mediante el
+El repositorio está en su etapa de fundación: ya contiene el esqueleto del
+proyecto Python, las validaciones y las reglas de desarrollo, pero todavía no
+implementa el primer conector ni la CLI. Esas piezas se incorporarán mediante el
 ciclo SDD definido en este repositorio.
 
 ## Principios
@@ -53,21 +54,24 @@ output/              resultados locales no versionados
 Dockerfile           imagen portable para ejecución headless
 ```
 
-Las rutas de código son objetivo de la siguiente etapa y no existen todavía.
+`src/` y `tests/` ya contienen el esqueleto mínimo. La CLI, los conectores,
+`output/` y el contenedor se agregarán mediante iniciativas SDD posteriores.
 
-## Inicio rápido futuro
+## Preparar el entorno
 
-Cuando el primer MVP incorpore `pyproject.toml`, `.env.example` y la CLI, el
-flujo esperado será:
+Se usa [uv](https://docs.astral.sh/uv/) para gestionar Python 3.12 y las
+dependencias:
 
 ```bash
 uv sync
-cp .env.example .env
-uv run ndevscrap run <connector> --output output/result.jsonl
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
 ```
 
-La misma interfaz se ejecutará en local y en contenedores. Los adaptadores de un
-proveedor cloud vivirán fuera de los conectores.
+Cuando el primer conector añada configuración se creará `.env` desde
+`.env.example`. La futura CLI conservará la misma interfaz en local y en
+contenedores; los adaptadores cloud vivirán fuera de los conectores.
 
 ## Validar este repositorio
 
@@ -78,8 +82,8 @@ python scripts/validate_repository.py
 python scripts/validate_repository.py --self-test
 ```
 
-GitHub Actions ejecuta estas comprobaciones en cada push y pull request. Cuando
-exista `pyproject.toml`, ejecutará también `pytest` y Ruff.
+GitHub Actions ejecuta estas comprobaciones en cada push y pull request. El
+workflow de CI ejecuta además `pytest` y Ruff sobre el proyecto Python.
 
 ## Operación responsable
 
