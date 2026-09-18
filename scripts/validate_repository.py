@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Validate repository documentation and SDD packages without dependencies."""
 
 from __future__ import annotations
