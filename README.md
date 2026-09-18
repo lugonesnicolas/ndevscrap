@@ -1,83 +1,89 @@
 # NDevScrap
 
-Base para construir scrapers Python **API-first** que se ejecutan con la misma
-lógica en local y en un contenedor Docker apto para entornos cloud/headless.
-Cada scraper separa la extracción de datos de los detalles de ejecución,
-configuración y almacenamiento.
+NDevScrap es la base para construir y operar scrapers Python para múltiples
+tiendas y plataformas con contratos consistentes. El proyecto prioriza APIs y
+HTML estático, reserva el navegador para los casos que realmente lo necesitan y
+mantiene separadas la extracción, la ejecución y la persistencia.
 
-## Principios y arquitectura
+El repositorio está en su etapa de fundación documental. Aún no contiene el
+primer scraper ni el runtime Python; esas piezas se incorporarán mediante el
+ciclo SDD definido en este repositorio.
 
-- Priorizar APIs y HTML estático: usar `requests` como cliente HTTP habitual.
-- Usar `httpx` sólo cuando se necesiten flujos asíncronos o controles HTTP más
-  avanzados.
-- Usar Playwright únicamente cuando el sitio requiera un navegador; el scraper
-  conserva su contrato aunque el navegador se ejecute en modo headless.
-- Mantener la lógica de extracción independiente de los adaptadores de red,
-  navegador y almacenamiento. Así, local y Docker sólo cambian la configuración
-  del runtime, no el scraper.
+## Principios
 
-La estructura objetivo es:
+- Un monolito modular es el punto de partida; los límites internos deben permitir
+  separar componentes cuando el volumen lo justifique.
+- Un conector implementa un contrato estable y reutiliza componentes mediante
+  composición.
+- Las variaciones se modelan como plataforma, configuración de tienda y overrides
+  específicos, en ese orden.
+- La estrategia de acceso es API, luego HTML estático y finalmente Playwright.
+- Toda ejecución debe ser observable, reintentable e idempotente.
+- Los datos conservan su origen y avanzan por capas raw, normalized y current.
+- No se eluden controles de acceso ni medidas antiabuso.
+
+La descripción normativa y los trade-offs están en la
+[guía de arquitectura](docs/architecture.md). Las decisiones duraderas se
+registran como [ADR](docs/adr/README.md).
+
+## Cómo se trabaja
+
+Todo scraper o cambio funcional comienza con una iniciativa SDD. Antes de
+programar deben estar aprobados sus requisitos y su plan; al finalizar, la
+evidencia se registra junto al cambio.
+
+1. Leer la [guía de contribución](CONTRIBUTING.md).
+2. Crear la iniciativa desde las [plantillas SDD](docs/sdd/README.md).
+3. Aprobar `spec.md` y `plan.md`.
+4. Implementar las tareas manteniendo trazabilidad con los requisitos.
+5. Ejecutar las validaciones y completar `validation.md`.
+6. Abrir un pull request usando la plantilla del repositorio.
+
+El paquete [0001-repository-foundation](docs/sdd/0001-repository-foundation/spec.md)
+muestra el proceso completo aplicado a esta base documental.
+
+## Estructura objetivo
 
 ```text
-src/       # CLI, contratos compartidos y scrapers
-tests/     # Pruebas y fixtures HTML/JSON
-output/    # Resultados JSON/JSONL generados (no versionar)
-Dockerfile # Imagen portable para ejecución headless
+src/                 CLI, contratos compartidos y conectores
+tests/               pruebas y fixtures HTML/JSON locales
+docs/                arquitectura, ADR e iniciativas SDD
+scripts/             herramientas de desarrollo sin lógica de scraping
+output/              resultados locales no versionados
+Dockerfile           imagen portable para ejecución headless
 ```
 
-## Inicio rápido
+Las rutas de código son objetivo de la siguiente etapa y no existen todavía.
 
-Se usará [uv](https://docs.astral.sh/uv/) para gestionar Python y las
-dependencias. Tras incorporar `pyproject.toml` y `.env.example` al primer MVP:
+## Inicio rápido futuro
+
+Cuando el primer MVP incorpore `pyproject.toml`, `.env.example` y la CLI, el
+flujo esperado será:
 
 ```bash
 uv sync
 cp .env.example .env
-uv run ndewscrap run <scraper> --output output/result.jsonl
+uv run ndevscrap run <connector> --output output/result.jsonl
 ```
 
-La CLI es la interfaz pública: selecciona un scraper, recibe su configuración y
-escribe registros serializables en JSON o JSONL. Una ejecución correcta termina
-con código `0`; errores de configuración, extracción o escritura deben terminar
-con un código distinto de cero y un mensaje registrado.
+La misma interfaz se ejecutará en local y en contenedores. Los adaptadores de un
+proveedor cloud vivirán fuera de los conectores.
 
-## Ejecución en Docker
+## Validar este repositorio
 
-Docker debe reproducir el mismo comando de la CLI sin cambiar la lógica del
-scraper. Cuando exista el `Dockerfile`, el flujo será:
+La documentación y los paquetes SDD se validan sin instalar dependencias:
 
 ```bash
-docker build -t ndevscrap .
-docker run --rm --env-file .env -v "${PWD}/output:/app/output" ndevscrap \
-  run <scraper> --output /app/output/result.jsonl
+python scripts/validate_repository.py
+python scripts/validate_repository.py --self-test
 ```
 
-El proveedor cloud puede ejecutar esta imagen de forma programada o bajo
-demanda. Los adaptadores específicos del proveedor deben vivir fuera de los
-scrapers.
+GitHub Actions ejecuta estas comprobaciones en cada push y pull request. Cuando
+exista `pyproject.toml`, ejecutará también `pytest` y Ruff.
 
-## Configuración y operación responsable
+## Operación responsable
 
-Configure URLs, tokens, límites y demás valores por variables de entorno. Use
-`.env` sólo en local, mantenga `.env.example` sin valores secretos y nunca suba
-credenciales ni resultados sensibles al repositorio.
-
-Antes de extraer datos, revise los términos del sitio y `robots.txt` cuando
-corresponda. Cada scraper debe aplicar timeouts, rate limits, reintentos
-acotados y logging útil; no debe intentar eludir controles de acceso ni medidas
-antiabuso.
-
-## Calidad y contribuciones
-
-Las pruebas usarán `pytest` y fixtures locales de respuestas HTML/JSON, evitando
-que la suite dependa de sitios externos. Antes de enviar cambios, ejecute:
-
-```bash
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-```
-
-Incluya pruebas para la transformación de datos, errores HTTP y formato de
-salida. Mantenga los cambios pequeños, describa el scraper o adaptación añadida
-en el commit y documente cualquier nueva variable de entorno en `.env.example`.
+Las credenciales y los resultados sensibles nunca se versionan. Cada iniciativa
+de scraper debe evaluar términos del sitio, `robots.txt` cuando corresponda,
+timeouts, límites de frecuencia, retención y tratamiento de datos antes de ser
+aprobada.

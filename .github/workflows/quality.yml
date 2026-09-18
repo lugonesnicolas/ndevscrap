@@ -1,0 +1,57 @@
+name: Quality
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate documentation and SDD
+        run: python scripts/validate_repository.py
+
+      - name: Exercise validator failure path
+        run: python scripts/validate_repository.py --self-test
+
+      - name: Detect Python project
+        id: python_project
+        shell: bash
+        run: |
+          if [[ -f pyproject.toml ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No pyproject.toml; pytest and Ruff are intentionally skipped."
+          fi
+
+      - name: Install uv
+        if: steps.python_project.outputs.present == 'true'
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Python project
+        if: steps.python_project.outputs.present == 'true'
+        run: uv sync
+
+      - name: Run tests
+        if: steps.python_project.outputs.present == 'true'
+        run: uv run pytest
+
+      - name: Run Ruff lint
+        if: steps.python_project.outputs.present == 'true'
+        run: uv run ruff check .
+
+      - name: Check Ruff formatting
+        if: steps.python_project.outputs.present == 'true'
+        run: uv run ruff format --check .
