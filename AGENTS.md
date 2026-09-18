@@ -23,7 +23,7 @@ The planned toolchain uses `uv` and a `pyproject.toml`. Once introduced, run:
 
 ```bash
 uv sync                              # Install locked dependencies
-uv run ndewscrap run <scraper> --output output/result.jsonl
+uv run ndevscrap run <scraper> --output output/result.jsonl
 uv run pytest                        # Run the offline test suite
 uv run ruff check .                  # Lint
 uv run ruff format --check .         # Verify formatting

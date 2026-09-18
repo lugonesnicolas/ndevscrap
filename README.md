@@ -27,13 +27,14 @@ Dockerfile # Imagen portable para ejecución headless
 
 ## Inicio rápido
 
-Se usará [uv](https://docs.astral.sh/uv/) para gestionar Python y las
-dependencias. Tras incorporar `pyproject.toml` y `.env.example` al primer MVP:
+Se usa [uv](https://docs.astral.sh/uv/) para gestionar Python y las
+dependencias. Cree `.env` desde `.env.example` cuando el primer scraper añada
+configuración:
 
 ```bash
 uv sync
 cp .env.example .env
-uv run ndewscrap run <scraper> --output output/result.jsonl
+uv run ndevscrap run <scraper> --output output/result.jsonl
 ```
 
 La CLI es la interfaz pública: selecciona un scraper, recibe su configuración y
