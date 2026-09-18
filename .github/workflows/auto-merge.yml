@@ -1,0 +1,28 @@
+name: Enable auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable:
+    name: Enable squash auto-merge
+    if: >-
+      !github.event.pull_request.draft &&
+      (github.event.pull_request.head.repo.full_name == github.repository ||
+      github.actor == 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge when requirements complete
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if gh pr view "$PR_NUMBER" --json autoMergeRequest --jq '.autoMergeRequest != null' | grep -qx true; then
+            exit 0
+          fi
+          gh pr merge "$PR_NUMBER" --auto --squash --delete-branch

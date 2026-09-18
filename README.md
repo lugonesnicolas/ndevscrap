@@ -27,8 +27,9 @@ Dockerfile # Imagen portable para ejecución headless
 
 ## Inicio rápido
 
-Se usará [uv](https://docs.astral.sh/uv/) para gestionar Python y las
-dependencias. Tras incorporar `pyproject.toml` y `.env.example` al primer MVP:
+Se usa [uv](https://docs.astral.sh/uv/) para gestionar Python y las
+dependencias. Cree `.env` desde `.env.example` cuando el primer scraper añada
+configuración:
 
 ```bash
 uv sync
