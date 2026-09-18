@@ -34,7 +34,7 @@ configuración:
 ```bash
 uv sync
 cp .env.example .env
-uv run ndewscrap run <scraper> --output output/result.jsonl
+uv run ndevscrap run <scraper> --output output/result.jsonl
 ```
 
 La CLI es la interfaz pública: selecciona un scraper, recibe su configuración y

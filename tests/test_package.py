@@ -1,4 +1,4 @@
-from ndewscrap import __version__
+from ndevscrap import __version__
 
 
 def test_package_exposes_a_version() -> None:
