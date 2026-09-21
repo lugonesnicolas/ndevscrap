@@ -8,4 +8,4 @@
   SDD para `REQ-004`.
 - [x] `TASK-003` Extender el validador con reglas estructurales para `REQ-005`
   según `DES-003`.
-- [ ] `TASK-004` Validar `AC-001` a `AC-005` y registrar evidencia.
+- [x] `TASK-004` Validar `AC-001` a `AC-005` y registrar evidencia.

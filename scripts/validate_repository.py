@@ -224,17 +224,17 @@ def validate_platform_metadata(
             errors.append(f"{path}: falta metadata obligatoria '{field}'")
     if metadata.get("status") not in PLATFORM_STATUSES:
         allowed = ", ".join(sorted(PLATFORM_STATUSES))
-        errors.append(
-            f"{path}: status inválido; valores permitidos: {allowed}"
-        )
+        errors.append(f"{path}: status inválido; valores permitidos: {allowed}")
     for field in ("created", "updated"):
         value = metadata.get(field, "")
         if value and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
             errors.append(f"{path}: '{field}' debe usar YYYY-MM-DD")
 
     last_verified = metadata.get("last_verified", "")
-    if last_verified and last_verified != "pending" and not re.fullmatch(
-        r"\d{4}-\d{2}-\d{2}", last_verified
+    if (
+        last_verified
+        and last_verified != "pending"
+        and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", last_verified)
     ):
         errors.append(f"{path}: 'last_verified' debe usar YYYY-MM-DD o pending")
     if metadata.get("status") != "draft" and last_verified == "pending":
@@ -269,8 +269,7 @@ def validate_platforms(root: Path) -> list[str]:
             errors.extend(metadata_errors)
             if metadata.get("id") and metadata["id"] != platform.name:
                 errors.append(
-                    f"{overview}: id '{metadata['id']}' no coincide con "
-                    f"{platform.name}"
+                    f"{overview}: id '{metadata['id']}' no coincide con {platform.name}"
                 )
 
         versions = platform / "versions"
@@ -408,7 +407,9 @@ last_verified: pending
         platform_errors = validate_platforms(platforms_root)
         expected_platform_error = "falta la ficha principal README.md"
         if not any(expected_platform_error in error for error in platform_errors):
-            return ["self-test: el validador no rechazó una ficha de plataforma incompleta"]
+            return [
+                "self-test: el validador no rechazó una ficha de plataforma incompleta"
+            ]
         print(
             "Self-test OK: paquetes SDD y fichas de plataforma incompletos fueron "
             "rechazados con mensajes accionables."

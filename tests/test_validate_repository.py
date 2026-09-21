@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-
 VALIDATOR_PATH = Path(__file__).parents[1] / "scripts" / "validate_repository.py"
 SPEC = importlib.util.spec_from_file_location("validate_repository", VALIDATOR_PATH)
 assert SPEC and SPEC.loader

@@ -2,9 +2,7 @@
 
 ## Resultado
 
-La implementación y la validación documental están completas. La iniciativa se
-mantiene en `validation` hasta ejecutar pytest y Ruff en un entorno con las
-dependencias de desarrollo disponibles.
+La iniciativa cumple los criterios de aceptación y queda lista para cerrar.
 
 ## Evidencia
 
@@ -13,11 +11,13 @@ dependencias de desarrollo disponibles.
 - `python scripts/validate_repository.py --self-test` — OK: valida una ficha y
   un anexo `draft` completos, y rechaza un SDD y una ficha incompletos con
   mensajes accionables.
-- `python -m py_compile scripts/validate_repository.py
-  tests/test_validate_repository.py` — OK.
-- `python -m pytest`, `python -m ruff check .` y `python -m ruff format --check
-  .` — no ejecutados: el intérprete disponible es Python 3.9 sin los módulos
-  `pytest` ni `ruff`; `uv` tampoco está instalado en este entorno.
+- `.venv\Scripts\pytest.exe --basetemp .venv\pytest-tmp` — OK: 3 pruebas
+  superadas con Python 3.12.14 y pytest 9.1.1. Se eligió una carpeta temporal
+  local porque el sandbox no permite acceder al directorio temporal de pytest
+  del usuario.
+- `.venv\Scripts\ruff.exe check .` — OK: todas las comprobaciones superadas.
+- `.venv\Scripts\ruff.exe format --check .` — OK: 30 archivos formateados.
+- `git diff --check` — OK: sin errores de whitespace.
 
 ## Criterios de aceptación
 
@@ -26,11 +26,12 @@ dependencias de desarrollo disponibles.
   una sección explícita de hallazgos pendientes.
 - `AC-003`: satisfecho; la guía define estados, verificación y retiro de
   versiones.
-- `AC-004`: satisfecho por el validador y su self-test; la prueba pytest añadida
-  queda pendiente de un entorno con dependencias de desarrollo.
+- `AC-004`: satisfecho; validador, self-test y pruebas pytest superados.
 - `AC-005`: satisfecho; README, contribución y la guía SDD enlazan el catálogo.
 
 ## Desviaciones
 
-No hubo desviaciones respecto del plan. La falta de `uv`, pytest y Ruff impide
-cerrar la iniciativa con todas las comprobaciones requeridas por el repositorio.
+No hubo desviaciones de diseño. La validación se ejecutó desde el entorno
+virtual Python 3.12 existente porque `uv` no está disponible en `PATH`. Tras el
+primer run de CI se corrigió el espaciado del bloque de imports marcado como
+`I001` y se aplicó el formato requerido al validador.

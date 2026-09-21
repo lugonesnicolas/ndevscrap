@@ -1,7 +1,7 @@
 ---
 id: 0003-platform-documentation
 title: Estándar de documentación de plataformas
-status: validation
+status: done
 owner: maintainers
 created: 2026-09-20
 updated: 2026-09-20
