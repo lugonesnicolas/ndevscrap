@@ -56,6 +56,16 @@ como `done` hasta que la validación sea reproducible.
 3. **Validación:** evidencia por criterio, pruebas y documentación actualizada.
 4. **Cierre:** estado `done` y pull request con checklist completo.
 
+## Catálogo de plataformas
+
+Cuando una iniciativa explore o reutilice una API de plataforma, debe enlazar la
+ficha correspondiente del [catálogo de plataformas](../platforms/README.md).
+Durante `draft`, los hallazgos se registran como confirmados sólo si tienen una
+fuente y fecha; las hipótesis permanecen en la sección de hallazgos pendientes.
+La ficha común conserva comportamiento compartido de la plataforma y sus
+versiones. El SDD conserva el alcance, la configuración y los overrides de la
+tienda o conector concreto.
+
 Un ADR se agrega sólo cuando la iniciativa introduce o modifica una decisión
 arquitectónica transversal. El ADR enlaza el SDD y el plan enlaza el ADR.
 

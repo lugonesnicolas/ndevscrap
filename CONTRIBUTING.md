@@ -32,6 +32,14 @@ detallados en la [guía SDD](docs/sdd/README.md).
 
 No comience la implementación hasta que la iniciativa tenga estado `approved`.
 
+## 2.1 Documentar plataformas
+
+Durante el descubrimiento de una API, cree o actualice la ficha reutilizable en
+el [catálogo de plataformas](docs/platforms/README.md). Registre evidencia
+fechada, enlaces a fuentes oficiales y hallazgos pendientes; no incluya secretos
+ni datos de una tienda concreta. El SDD del conector debe enlazar esa ficha y
+conservar sólo sus decisiones y overrides particulares.
+
 ## 3. Implementar
 
 - Cambie el estado a `in-progress` y ejecute las tareas en orden.
@@ -39,6 +47,8 @@ No comience la implementación hasta que la iniciativa tenga estado `approved`.
 - Prefiera componentes pequeños y composición sobre jerarquías de herencia.
 - No introduzca Playwright si la información puede obtenerse mediante API o HTML.
 - Agregue fixtures locales y pruebas; la suite normal no depende de tiendas reales.
+- Verifique la ficha de plataforma antes de reutilizarla y actualícela si una
+  prueba operativa detecta un cambio de API.
 - Si la implementación se aparta del plan, actualice y vuelva a revisar el SDD
   antes de continuar.
 - Cree un ADR únicamente para una decisión transversal y duradera.
