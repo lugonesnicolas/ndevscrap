@@ -26,6 +26,8 @@ ciclo SDD definido en este repositorio.
 La descripción normativa y los trade-offs están en la
 [guía de arquitectura](docs/architecture.md). Las decisiones duraderas se
 registran como [ADR](docs/adr/README.md).
+El conocimiento reutilizable descubierto sobre APIs se mantiene en el
+[catálogo de plataformas](docs/platforms/README.md).
 
 ## Cómo se trabaja
 
@@ -34,7 +36,8 @@ programar deben estar aprobados sus requisitos y su plan; al finalizar, la
 evidencia se registra junto al cambio.
 
 1. Leer la [guía de contribución](CONTRIBUTING.md).
-2. Crear la iniciativa desde las [plantillas SDD](docs/sdd/README.md).
+2. Crear la iniciativa desde las [plantillas SDD](docs/sdd/README.md) y, cuando
+   corresponda, iniciar o actualizar su ficha en el catálogo de plataformas.
 3. Aprobar `spec.md` y `plan.md`.
 4. Implementar las tareas manteniendo trazabilidad con los requisitos.
 5. Ejecutar las validaciones y completar `validation.md`.
