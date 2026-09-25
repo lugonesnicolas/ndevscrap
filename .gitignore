@@ -24,3 +24,6 @@ test-results/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Sessions
+*.har
