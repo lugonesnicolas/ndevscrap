@@ -1,0 +1,33 @@
+{
+  "response": {
+    "categorias": [],
+    "cupones": [
+      {
+        "aceptableEnListado": true,
+        "categoria": 7,
+        "codigo": 10001,
+        "descripcion": "Cupón sanitizado",
+        "finVigencia": 1790812799000,
+        "futuro": false,
+        "id": 101,
+        "idCifrado": "opaque-id",
+        "inicioVigencia": 1788217200000,
+        "lineas": [
+          {"hashEstilo": 1, "texto": "10% de descuento"},
+          {"hashEstilo": 2, "texto": "Condición sanitizada"}
+        ],
+        "subtipoCupon": "porcentaje",
+        "tipoCupon": "descuento",
+        "usado": false,
+        "customerEmail": "must-not-be-persisted@example.invalid",
+        "document": "00000000"
+      }
+    ],
+    "totalAnnualSave": 0,
+    "totalCompras": 0
+  },
+  "responseDetails": {
+    "codError": "0",
+    "descripcion": "sanitized"
+  }
+}

@@ -1,0 +1,15 @@
+[
+  {
+    "id": 1,
+    "name": "Almacén",
+    "url": "https://shop.example/almacen",
+    "children": [
+      {
+        "id": 2,
+        "name": "Conservas",
+        "url": "https://shop.example/almacen/conservas",
+        "children": []
+      }
+    ]
+  }
+]

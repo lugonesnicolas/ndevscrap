@@ -1,0 +1,58 @@
+{
+  "products": [
+    {
+      "productId": "product-1",
+      "productName": "Producto sanitizado",
+      "brand": "Marca",
+      "categories": ["/Almacén/Conservas/", "/Almacén/"],
+      "link": "https://shop.example/producto-sanitizado/p",
+      "linkText": "producto-sanitizado",
+      "items": [
+        {
+          "itemId": "sku-1",
+          "ean": "7790000000001",
+          "nameComplete": "Producto sanitizado 500 g",
+          "images": [
+            {"imageUrl": "https://images.example/product-1.jpg"}
+          ],
+          "sellers": [
+            {
+              "sellerId": "seller-1",
+              "sellerName": "Vendedor",
+              "sellerDefault": true,
+              "commertialOffer": {
+                "AvailableQuantity": 12,
+                "IsAvailable": true,
+                "ListPrice": 1389.0,
+                "Price": 1100.5,
+                "discountHighlights": [{"name": "Oferta pública"}]
+              }
+            }
+          ]
+        },
+        {
+          "itemId": "sku-2",
+          "ean": "",
+          "nameComplete": "Producto sanitizado sin stock",
+          "images": [],
+          "sellers": [
+            {
+              "sellerId": "seller-1",
+              "sellerName": "Vendedor",
+              "sellerDefault": true,
+              "commertialOffer": {
+                "AvailableQuantity": 0,
+                "IsAvailable": false,
+                "ListPrice": 1200.0,
+                "Price": 0.0,
+                "discountHighlights": []
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "recordsFiltered": 1,
+  "pagination": {"perPage": 50, "last": {"index": 1}}
+}

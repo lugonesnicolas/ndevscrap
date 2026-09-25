@@ -5,10 +5,9 @@ tiendas y plataformas con contratos consistentes. El proyecto prioriza APIs y
 HTML estático, reserva el navegador para los casos que realmente lo necesitan y
 mantiene separadas la extracción, la ejecución y la persistencia.
 
-El repositorio está en su etapa de fundación: ya contiene el esqueleto del
-proyecto Python, las validaciones y las reglas de desarrollo, pero todavía no
-implementa el primer conector ni la CLI. Esas piezas se incorporarán mediante el
-ciclo SDD definido en este repositorio.
+El repositorio contiene la base Python, las validaciones y el primer conector
+VTEX/DIA con CLI local y Docker. Su evolución continúa mediante el ciclo SDD
+definido en este repositorio.
 
 ## Principios
 
@@ -57,8 +56,61 @@ output/              resultados locales no versionados
 Dockerfile           imagen portable para ejecución headless
 ```
 
-`src/` y `tests/` ya contienen el esqueleto mínimo. La CLI, los conectores,
-`output/` y el contenedor se agregarán mediante iniciativas SDD posteriores.
+`src/` y `tests/` contienen el esqueleto y la iniciativa
+[0004-dia-vtex-connector](docs/sdd/0004-dia-vtex-connector/spec.md) incorpora la
+primera CLI y el conector VTEX/DIA.
+
+## Ejecutar DIA Online
+
+La integración pública usa VTEX Intelligent Search y requiere un código postal
+para contextualizar disponibilidad y precios:
+
+```bash
+uv sync --all-groups
+uv run ndevscrap run dia --postal-code 1806 --output output
+```
+
+El código postal piloto predeterminado es `1806`, por lo que también se puede
+omitir `--postal-code`. La salida diaria queda en `output/dia/1806/` con raw
+público comprimido, JSONL normalizado, manifest y una vista `current`.
+
+ClubDIA forma parte de la corrida desde la primera versión. La sesión se entrega
+en un archivo JSON local no versionado con las cookies funcionales VTEX y el
+`order-form-id` efímero que requiere la pantalla de cupones:
+
+```json
+{
+  "headers": {"order-form-id": "valor-secreto"},
+  "cookies": {"VtexIdclientAutCookie_diaio": "valor-secreto"}
+}
+```
+
+Para renovar manualmente la sesión, inicie sesión en DIA, abra la pantalla
+ClubDIA, exporte un HAR autorizado y ejecute:
+
+```bash
+python scripts/extract_dia_session.py "captura-día.har"
+```
+
+El script conserva sólo el material funcional mínimo en
+`output/secrets/dia-session.json`, una ruta ignorada por Git. Luego defina
+`NDEVSCRAP_DIA_SESSION_FILE` según `.env.example`. Nunca incluya la sesión en
+argumentos, logs o archivos versionados. Si falta o expira, el catálogo público
+puede publicarse pero la CLI devuelve estado parcial y conserva el último
+`current` válido de cupones.
+
+La misma CLI está disponible en Docker:
+
+```bash
+docker build -t ndevscrap .
+docker run --rm -v ./output:/app/output ndevscrap run dia \
+  --postal-code 1806 --output /app/output
+```
+
+Para incluir ClubDIA en Docker, monte el archivo de sesión como secreto de sólo
+lectura y defina `NDEVSCRAP_DIA_SESSION_FILE` dentro del contenedor.
+
+La programación diaria pertenece al host, por ejemplo Task Scheduler o cron.
 
 ## Preparar el entorno
 

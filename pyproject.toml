@@ -10,7 +10,11 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "requests>=2.32,<3",
+    "tzdata>=2025.2",
 ]
+
+[project.scripts]
+ndevscrap = "ndevscrap.cli:main"
 
 [dependency-groups]
 dev = [
