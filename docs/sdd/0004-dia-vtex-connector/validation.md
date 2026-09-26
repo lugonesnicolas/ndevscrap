@@ -52,3 +52,13 @@ autorización, los límites autorizados y el contacto técnico.
 - El endpoint `PUT /cupons` observado en el checkout no lista beneficios. La
   pantalla ClubDIA usa `GET /cupons` con token y `order-form-id`; el SDD y el
   conector se ajustaron a ese flujo de sólo lectura.
+- Hallazgos posteriores al cierre técnico (auditoría v0.1.0 del 2026-09-25):
+  la línea base de volumen se leía del último intento y no del current
+  publicado, `current/manifest.json` no describía los datos de current, un
+  reintento fallido reemplazaba el snapshot válido del día y descartaba el
+  staging reanudable, y una excepción no prevista de ClubDIA marcaba el catálogo
+  como fallido. Por ello `AC-002`, `AC-004` y `AC-005` se consideraban
+  satisfechos sólo parcialmente. La corrección se especifica y valida en
+  [0005-run-integrity](../0005-run-integrity/spec.md): los manifests de intentos
+  no aceptados pasan a `attempts/<fecha>/<run_id>/` y `current/manifest.json` es
+  ahora un índice de procedencia.

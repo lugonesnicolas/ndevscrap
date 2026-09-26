@@ -11,6 +11,8 @@ import requests
 
 from .contracts import HttpRequest, HttpResponse
 
+RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+
 
 class TransportError(RuntimeError):
     """Base error for HTTP acquisition."""
@@ -25,8 +27,6 @@ class HttpStatusError(TransportError):
 
 class RequestsTransport:
     """Synchronous transport suitable for conservative storefront access."""
-
-    _RETRYABLE = frozenset({429, 500, 502, 503, 504})
 
     def __init__(
         self,
@@ -71,7 +71,10 @@ class RequestsTransport:
                 self._retry(attempt, None)
                 continue
 
-            if response.status_code in self._RETRYABLE and attempt < self._max_retries:
+            if (
+                response.status_code in RETRYABLE_STATUS_CODES
+                and attempt < self._max_retries
+            ):
                 self._retry(attempt, response.headers.get("Retry-After"))
                 continue
             if not 200 <= response.status_code < 300:

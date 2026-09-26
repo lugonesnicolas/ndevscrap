@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -12,20 +13,31 @@ from zoneinfo import ZoneInfo
 from .config import DiaConfig
 from .connectors.clubdia import ClubDiaAuthenticationError, ClubDiaConnector
 from .connectors.vtex import VtexConnector
-from .contracts import RunContext
+from .contracts import CatalogOutcome, RunContext, Transport
 from .models import ComponentResult, CouponSnapshot, ProductSnapshot, RunManifest
 from .quality import evaluate_products
 from .session import JsonFileSessionProvider, SessionConfigurationError
 from .storage import FileSnapshotStore
-from .transport import HttpStatusError, RequestsTransport
+from .transport import (
+    RETRYABLE_STATUS_CODES,
+    HttpStatusError,
+    RequestsTransport,
+    TransportError,
+)
 
 LOGGER = logging.getLogger(__name__)
 
 
-def run_dia(config: DiaConfig) -> tuple[RunManifest, Path]:
+def run_dia(
+    config: DiaConfig,
+    *,
+    transport: Transport | None = None,
+    clock: Callable[[], datetime] | None = None,
+) -> tuple[RunManifest, Path]:
     config.validate()
     zone = ZoneInfo(config.timezone)
-    started = datetime.now(zone)
+    now = clock or (lambda: datetime.now(zone))
+    started = now()
     started_clock = time.monotonic()
     run_id = str(uuid.uuid4())
     snapshot_id = f"dia:{config.postal_code}:{started.date().isoformat()}"
@@ -43,47 +55,16 @@ def run_dia(config: DiaConfig) -> tuple[RunManifest, Path]:
         run_id=run_id,
     )
     store.prepare()
-    user_agent = "NDevScrap/0.1"
-    if config.contact:
-        user_agent = f"{user_agent} ({config.contact})"
-    transport = RequestsTransport(
-        timeout_seconds=config.timeout_seconds,
-        requests_per_second=config.requests_per_second,
-        max_retries=config.max_retries,
-        user_agent=user_agent,
-    )
-    components: dict[str, ComponentResult] = {}
-    publish_catalog = False
-    publish_coupons = False
+    if transport is None:
+        transport = _default_transport(config)
 
-    try:
-        products, catalog = _run_catalog(config, context, transport, store)
-        quality = evaluate_products(products, store.previous_product_count())
-        catalog.rejected += quality.rejected
-        catalog.errors.extend(quality.errors)
-        catalog.normalized = store.write_products(quality.products)
-        catalog.status = "success" if quality.ok else "quality_failure"
-        publish_catalog = quality.ok
-        components["catalog"] = catalog
+    catalog, catalog_outcome = _catalog_component(config, context, transport, store)
+    clubdia = _clubdia_component(config, context, transport, store)
+    components = {"catalog": catalog, "clubdia": clubdia}
 
-        coupons, club = _run_clubdia(config, context, transport)
-        if coupons is not None:
-            club.normalized = store.write_coupons(coupons)
-            publish_coupons = club.status == "success"
-        components["clubdia"] = club
-    except Exception as exc:
-        LOGGER.exception("DIA run failed", extra={"run_id": run_id})
-        catalog = components.setdefault("catalog", ComponentResult(status="failed"))
-        catalog.status = "failed"
-        catalog.errors.append(str(exc))
-        components.setdefault("clubdia", ComponentResult(status="skipped"))
-
-    finished = datetime.now(zone)
-    catalog_status = components["catalog"].status
-    club_status = components["clubdia"].status
-    if catalog_status != "success":
+    if catalog.status != "success":
         status = "failed"
-    elif club_status in {"failed", "authentication_required"}:
+    elif clubdia.status in {"failed", "authentication_required"}:
         status = "partial_success"
     else:
         status = "success"
@@ -94,7 +75,7 @@ def run_dia(config: DiaConfig) -> tuple[RunManifest, Path]:
         store="dia",
         postal_code=config.postal_code,
         started_at=started,
-        finished_at=finished,
+        finished_at=now(),
         configuration_hash=config.public_hash(),
         status=status,
         components=components,
@@ -102,37 +83,120 @@ def run_dia(config: DiaConfig) -> tuple[RunManifest, Path]:
     )
     destination = store.publish(
         manifest,
-        publish_catalog=publish_catalog,
-        publish_coupons=publish_coupons,
+        catalog_outcome=catalog_outcome,
+        publish_coupons=clubdia.status == "success",
     )
     return manifest, destination
+
+
+def _default_transport(config: DiaConfig) -> RequestsTransport:
+    user_agent = "NDevScrap/0.1"
+    if config.contact:
+        user_agent = f"{user_agent} ({config.contact})"
+    return RequestsTransport(
+        timeout_seconds=config.timeout_seconds,
+        requests_per_second=config.requests_per_second,
+        max_retries=config.max_retries,
+        user_agent=user_agent,
+    )
+
+
+def _catalog_component(
+    config: DiaConfig,
+    context: RunContext,
+    transport: Transport,
+    store: FileSnapshotStore,
+) -> tuple[ComponentResult, CatalogOutcome]:
+    result = ComponentResult(status="running")
+    retries_before = transport.retries
+    outcome: CatalogOutcome
+    try:
+        products = _run_catalog(config, context, transport, store, result)
+        quality = evaluate_products(products, store.previous_product_count())
+        result.rejected += quality.rejected
+        result.errors.extend(quality.errors)
+        result.normalized = store.write_products(quality.products)
+        result.status = "success" if quality.ok else "quality_failure"
+        outcome = "accepted" if quality.ok else "quarantined"
+    except Exception as exc:  # component boundary: isolate any catalog failure
+        result.status = "failed"
+        result.errors.append(f"{type(exc).__name__}: {exc}")
+        outcome = "failed_transient" if _is_transient(exc) else "failed"
+        LOGGER.error(
+            "catalog component failed: %s: %s",
+            type(exc).__name__,
+            exc,
+            extra={"run_id": context.run_id},
+        )
+        LOGGER.debug("catalog failure traceback", exc_info=True)
+    finally:
+        result.retries = transport.retries - retries_before
+    return result, outcome
 
 
 def _run_catalog(
     config: DiaConfig,
     context: RunContext,
-    transport: RequestsTransport,
+    transport: Transport,
     store: FileSnapshotStore,
-) -> tuple[list[ProductSnapshot], ComponentResult]:
+    result: ComponentResult,
+) -> list[ProductSnapshot]:
     connector = VtexConnector(config, transport)
-    result = ComponentResult(status="running")
     products: list[ProductSnapshot] = []
     for item in connector.discover(context):
-        record = store.read_raw("catalog", item.key)
+        record = item.prefetched or store.read_raw("catalog", item.key)
         if record is None:
             record = connector.extract(item, context)
-            store.write_raw("catalog", record)
-        normalized = tuple(connector.normalize(record, context))
+        try:
+            normalized = tuple(connector.normalize(record, context))
+        except Exception:
+            store.write_rejected("catalog", record)
+            raise
+        store.write_raw("catalog", record)
         products.extend(normalized)
         result.discovered += len(normalized)
-    result.retries = transport.retries
-    return products, result
+    return products
+
+
+def _is_transient(exc: Exception) -> bool:
+    if isinstance(exc, HttpStatusError):
+        return exc.status_code in RETRYABLE_STATUS_CODES
+    return isinstance(exc, TransportError)
+
+
+def _clubdia_component(
+    config: DiaConfig,
+    context: RunContext,
+    transport: Transport,
+    store: FileSnapshotStore,
+) -> ComponentResult:
+    retries_before = transport.retries
+    result = ComponentResult(status="running")
+    try:
+        coupons, result = _run_clubdia(config, context, transport)
+        if coupons is not None:
+            result.normalized = store.write_coupons(coupons)
+    except Exception as exc:  # noqa: BLE001 - component boundary
+        # Session material may travel in exception messages or chained causes,
+        # so only the exception type is recorded and no traceback is logged.
+        result = ComponentResult(
+            status="failed",
+            errors=[f"{type(exc).__name__}: unexpected ClubDIA failure"],
+        )
+        LOGGER.error(
+            "clubdia component failed: %s",
+            type(exc).__name__,
+            extra={"run_id": context.run_id},
+        )
+    finally:
+        result.retries = transport.retries - retries_before
+    return result
 
 
 def _run_clubdia(
     config: DiaConfig,
     context: RunContext,
-    transport: RequestsTransport,
+    transport: Transport,
 ) -> tuple[tuple[CouponSnapshot, ...] | None, ComponentResult]:
     if not config.session_file:
         return None, ComponentResult(
@@ -152,11 +216,11 @@ def _run_clubdia(
         return tuple(coupons), ComponentResult(
             status="success",
             discovered=len(coupons),
-            retries=transport.retries,
         )
     except (ClubDiaAuthenticationError, SessionConfigurationError) as exc:
         return None, ComponentResult(
-            status="authentication_required", errors=[str(exc)]
+            status="authentication_required",
+            errors=[f"{type(exc).__name__}: ClubDIA session unavailable or rejected"],
         )
     except HttpStatusError as exc:
         if exc.status_code in {401, 403}:
@@ -164,6 +228,12 @@ def _run_clubdia(
                 status="authentication_required",
                 errors=[f"ClubDIA session rejected with HTTP {exc.status_code}"],
             )
-        return None, ComponentResult(status="failed", errors=[str(exc)])
+        return None, ComponentResult(
+            status="failed",
+            errors=[f"ClubDIA request failed with HTTP {exc.status_code}"],
+        )
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
-        return None, ComponentResult(status="failed", errors=[str(exc)])
+        return None, ComponentResult(
+            status="failed",
+            errors=[f"{type(exc).__name__}: ClubDIA request failed"],
+        )
