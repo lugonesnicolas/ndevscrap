@@ -14,6 +14,7 @@ una iniciativa SDD ni se usan para decisiones locales y reversibles.
 
 - [ADR-0001: Monolito modular y modelo de conectores](0001-modular-connectors.md)
 - [ADR-0002: Estrategia API-first y aislamiento del navegador](0002-api-first-browser-isolation.md)
+- [ADR-0003: Definiciones de tienda y publicación por componente](0003-store-definitions-component-publication.md)
 
 Los nuevos ADR usan numeración correlativa, describen contexto, decisión,
 consecuencias y alternativas, y enlazan la iniciativa SDD que los origina.

@@ -2,10 +2,10 @@
 
 ## Resultado
 
-Implementación completa y validada localmente en Windows el 2026-09-26 sobre la
-base `345339f` con cambios sin versionar en `feat/0005-run-integrity`. La
-iniciativa queda en `validation` hasta registrar la ejecución verde de CI
-(Ubuntu) del pull request; con esa evidencia puede pasar a `done`.
+Iniciativa cerrada. Implementación validada localmente en Windows el
+2026-09-26 y en CI Ubuntu sobre `dd5acf0`, head del pull request #8, integrado
+en `main` como `96594b0` con el mismo árbol. Todos los criterios de aceptación
+están satisfechos.
 
 ## Evidencia
 
@@ -55,7 +55,17 @@ iniciativa queda en `validation` hasta registrar la ejecución verde de CI
   - `uv run ruff format --check .`: OK, 63 archivos.
   - `python scripts/validate_repository.py`: OK.
   - `python scripts/validate_repository.py --self-test`: OK.
-- CI Ubuntu del pull request: pendiente.
+- CI del pull request #8 sobre `dd5acf0` (2026-09-26), todo en verde:
+  - CI (pytest y Ruff en Ubuntu):
+    <https://github.com/lugonesnicolas/ndevscrap/actions/runs/36272560300>
+  - Quality:
+    <https://github.com/lugonesnicolas/ndevscrap/actions/runs/36272560336>
+  - Security (CodeQL y dependency review):
+    <https://github.com/lugonesnicolas/ndevscrap/actions/runs/36272560341>
+- El squash `96594b0` en `main` tiene el mismo árbol que `dd5acf0`
+  (`git diff dd5acf0 96594b0` vacío). `main` no registra ejecuciones propias
+  porque el auto-merge usa `GITHUB_TOKEN`; se resuelve en
+  `0008-release-v0-1-0`.
 
 ## Criterios de aceptación
 
@@ -88,9 +98,9 @@ iniciativa queda en `validation` hasta registrar la ejecución verde de CI
 - `AC-008`: satisfecho por
   `test_session_material_never_reaches_output_or_logs` con ocho variantes,
   captura `DEBUG` y lectura de todo archivo de salida, incluidos los gzip.
-- `AC-009`: satisfecho localmente por `tests/test_cli.py` (códigos `0`, `2` y
+- `AC-009`: satisfecho por `tests/test_cli.py` (códigos `0`, `2` y
   `1`, campo `snapshot`, error de configuración y de almacenamiento) y por la
-  verificación en Windows; pendiente la ejecución de CI en Ubuntu.
+  verificación en Windows y en la ejecución verde de CI en Ubuntu.
 
 ## Desviaciones
 

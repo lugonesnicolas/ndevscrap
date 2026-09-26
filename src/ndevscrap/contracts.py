@@ -1,16 +1,23 @@
-"""Shared protocol boundaries for connectors and adapters."""
+"""Shared protocol boundaries for connectors, stores and adapters."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Literal, Protocol, TypeVar
 
-from .models import CouponSnapshot, ProductSnapshot, RunManifest
+from .models import RunManifest
+from .quality import QualityPolicy
 
-CatalogOutcome = Literal["accepted", "quarantined", "failed", "failed_transient"]
+SnapshotOutcome = Literal["accepted", "quarantined", "failed", "failed_transient"]
+
+
+class AuthenticationRequiredError(RuntimeError):
+    """Session material is missing, invalid or rejected; a person must act."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +74,11 @@ class SourceItem:
     prefetched: RawRecord | None = None
 
 
-NormalizedT = TypeVar("NormalizedT", ProductSnapshot, CouponSnapshot)
+class NormalizedRecord(Protocol):
+    def to_dict(self) -> dict[str, Any]: ...
+
+
+NormalizedT = TypeVar("NormalizedT", bound=NormalizedRecord)
 
 
 class Connector(Protocol[NormalizedT]):
@@ -82,10 +93,37 @@ class Connector(Protocol[NormalizedT]):
     ) -> Iterable[NormalizedT]: ...
 
 
-class Transport(Protocol):
-    retries: int
+def _empty_counts() -> Mapping[int, int]:
+    return MappingProxyType({})
 
+
+@dataclass(frozen=True, slots=True)
+class TransportStats:
+    requests: int = 0
+    retries: int = 0
+    status_counts: Mapping[int, int] = field(default_factory=_empty_counts)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "status_counts", MappingProxyType(dict(self.status_counts))
+        )
+
+    def since(self, before: TransportStats) -> TransportStats:
+        counts = {
+            status: count - before.status_counts.get(status, 0)
+            for status, count in self.status_counts.items()
+        }
+        return TransportStats(
+            requests=self.requests - before.requests,
+            retries=self.retries - before.retries,
+            status_counts={status: count for status, count in counts.items() if count},
+        )
+
+
+class Transport(Protocol):
     def request(self, request: HttpRequest) -> HttpResponse: ...
+
+    def stats(self) -> TransportStats: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +136,44 @@ class SessionProvider(Protocol):
     def load(self) -> SessionMaterial: ...
 
 
+@dataclass(frozen=True, slots=True)
+class ComponentSpec:
+    """One executable part of a store, such as a catalog or a coupon feed."""
+
+    name: str
+    label: str
+    output_file: str
+    metadata: ConnectorMetadata
+    connector: Connector[Any] | None
+    critical: bool
+    persist_raw: bool
+    sensitive: bool = False
+    unavailable: str | None = None
+    validator: Callable[[Any], bool] | None = None
+    record_key: Callable[[Any], Hashable] | None = None
+    quality: QualityPolicy | None = None
+
+
+class StoreDefinition(Protocol):
+    """The only place that knows a concrete store and how it is composed."""
+
+    store_id: str
+    platform: str
+    timezone: str
+
+    def validate(self) -> None: ...
+
+    def public_settings(self) -> Mapping[str, Any]: ...
+
+    def components(self, transport: Transport) -> Sequence[ComponentSpec]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class StoredComponent:
+    output_file: str
+    critical: bool
+
+
 class SnapshotStore(Protocol):
     def prepare(self) -> None: ...
 
@@ -107,18 +183,18 @@ class SnapshotStore(Protocol):
 
     def read_raw(self, component: str, key: str) -> RawRecord | None: ...
 
-    def write_products(self, products: Iterable[ProductSnapshot]) -> int: ...
+    def write_normalized(
+        self, component: str, rows: Iterable[NormalizedRecord]
+    ) -> int: ...
 
-    def write_coupons(self, coupons: Iterable[CouponSnapshot]) -> int: ...
-
-    def previous_product_count(self) -> int | None: ...
+    def published_count(self, component: str) -> int | None: ...
 
     def publish(
         self,
         manifest: RunManifest,
         *,
-        catalog_outcome: CatalogOutcome,
-        publish_coupons: bool,
+        outcome: SnapshotOutcome,
+        published: AbstractSet[str],
     ) -> Path: ...
 
     def abort(self) -> None: ...

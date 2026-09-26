@@ -62,3 +62,9 @@ autorización, los límites autorizados y el contacto técnico.
   [0005-run-integrity](../0005-run-integrity/spec.md): los manifests de intentos
   no aceptados pasan a `attempts/<fecha>/<run_id>/` y `current/manifest.json` es
   ahora un índice de procedencia.
+- La auditoría también encontró brechas en `REQ-003` (el catálogo se acumulaba
+  completo en memoria), `REQ-008` (timeout, ritmo y reintentos no eran
+  configurables) y `REQ-009` (el manifiesto no informaba requests, códigos HTTP
+  ni duración por componente, y no había logs estructurados). Se cierran en
+  [0006-store-composition](../0006-store-composition/spec.md) con normalización
+  en streaming, variables `NDEVSCRAP_HTTP_*`, manifest v2 y logs JSON.

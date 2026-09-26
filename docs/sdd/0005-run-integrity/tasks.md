@@ -21,6 +21,6 @@
 - [x] `TASK-007` Actualizar el layout de salida en `README.md`, documentar
   `DES-011` y registrar los hallazgos posteriores en
   `0004-dia-vtex-connector/validation.md`.
-- [ ] `TASK-008` Ejecutar pytest, Ruff y validadores en Windows, obtener
+- [x] `TASK-008` Ejecutar pytest, Ruff y validadores en Windows, obtener
   revisión QA y de seguridad independientes y registrar la evidencia de
   `AC-001` a `AC-009`.

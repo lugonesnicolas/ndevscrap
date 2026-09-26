@@ -18,7 +18,7 @@ def _json_value(value: Any) -> Any:
     if isinstance(value, list):
         return [_json_value(item) for item in value]
     if isinstance(value, dict):
-        return {key: _json_value(item) for key, item in value.items()}
+        return {str(key): _json_value(item) for key, item in value.items()}
     return value
 
 
@@ -77,10 +77,17 @@ class CouponSnapshot:
 @dataclass(slots=True)
 class ComponentResult:
     status: str
+    connector_id: str = ""
+    connector_version: str = ""
     discovered: int = 0
     normalized: int = 0
     rejected: int = 0
+    duplicates: int = 0
     retries: int = 0
+    requests: int = 0
+    http_status_counts: dict[int, int] = field(default_factory=dict)
+    duration_seconds: float = 0.0
+    published: bool = False
     errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -91,17 +98,17 @@ class ComponentResult:
 class RunManifest:
     run_id: str
     snapshot_id: str
-    connector_version: str
+    platform: str
     store: str
-    postal_code: str
-    started_at: datetime
-    finished_at: datetime
+    location: dict[str, str]
+    package_version: str
     configuration_hash: str
     status: str
-    components: dict[str, ComponentResult]
+    started_at: datetime
+    finished_at: datetime
     duration_seconds: float
-    schema_version: str = "1"
+    components: dict[str, ComponentResult]
+    schema_version: str = "2"
 
     def to_dict(self) -> dict[str, Any]:
-        data = asdict(self)
-        return _json_value(data)
+        return _json_value(asdict(self))

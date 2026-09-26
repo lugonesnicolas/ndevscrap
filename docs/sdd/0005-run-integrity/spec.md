@@ -1,7 +1,7 @@
 ---
 id: 0005-run-integrity
 title: Integridad de snapshots, línea base de calidad y aislamiento de componentes
-status: validation
+status: done
 owner: maintainers
 created: 2026-09-26
 updated: 2026-09-26

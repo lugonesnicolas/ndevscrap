@@ -2,18 +2,24 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import io
 import json
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from ndevscrap.config import DiaConfig
-from ndevscrap.contracts import HttpRequest, HttpResponse, RunContext
-from ndevscrap.runner import _run_clubdia, run_dia
+from ndevscrap import __version__
+from ndevscrap.config import HttpSettings, RunSettings
+from ndevscrap.connectors.vtex import VtexSettings
+from ndevscrap.contracts import HttpRequest, HttpResponse, TransportStats
+from ndevscrap.observability import configure_logging
+from ndevscrap.runner import run_store
+from ndevscrap.storage import FileSnapshotStore
+from ndevscrap.stores.dia import DiaSettings, DiaStore
 from ndevscrap.transport import HttpStatusError, TransportError
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -26,13 +32,6 @@ COOKIE_SENTINEL = "cookie-SENTINEL-value"
 ORDER_FORM_SENTINEL = "order-form-SENTINEL-value"
 TOKEN_SENTINEL = "token-SENTINEL-value"
 SENTINELS = (COOKIE_SENTINEL, ORDER_FORM_SENTINEL, TOKEN_SENTINEL)
-
-
-class ExpiredSessionTransport:
-    retries = 0
-
-    def request(self, request):
-        raise HttpStatusError(401, request.url)
 
 
 class StoreTransport:
@@ -56,8 +55,28 @@ class StoreTransport:
         self.requests: list[tuple[str, int | None]] = []
         self.page_hooks: dict[tuple[str, int], Callable[[], object]] = {}
         self.token_retries = 0
+        self.status_counts: dict[int, int] = {}
+
+    def stats(self) -> TransportStats:
+        return TransportStats(
+            requests=len(self.requests),
+            retries=self.retries,
+            status_counts=dict(self.status_counts),
+        )
 
     def request(self, request: HttpRequest) -> HttpResponse:
+        try:
+            response = self._route(request)
+        except HttpStatusError as exc:
+            self._count(exc.status_code)
+            raise
+        self._count(response.status_code)
+        return response
+
+    def _count(self, status: int) -> None:
+        self.status_counts[status] = self.status_counts.get(status, 0) + 1
+
+    def _route(self, request: HttpRequest) -> HttpResponse:
         path = request.url.removeprefix(BASE_URL)
         page = request.params.get("page")
         self.requests.append((path, page if isinstance(page, int) else None))
@@ -79,6 +98,8 @@ class StoreTransport:
             self.retries += self.token_retries
             return self._clubdia_token(request)
         if path.endswith("/cupons"):
+            if self.clubdia == "malformed-payload":
+                return _json(request, {"response": {"cupones": [{"descripcion": "x"}]}})
             payload = json.loads(
                 (FIXTURES / "clubdia" / "coupons.json").read_text(encoding="utf-8")
             )
@@ -88,6 +109,8 @@ class StoreTransport:
     def _clubdia_token(self, request: HttpRequest) -> HttpResponse:
         if self.clubdia == "expired":
             raise HttpStatusError(401, request.url)
+        if self.clubdia == "redirect":
+            raise HttpStatusError(302, request.url)
         if self.clubdia == "chained":
             try:
                 raise ValueError(f"header rejected: {COOKIE_SENTINEL}")
@@ -176,14 +199,17 @@ def _session_file(tmp_path: Path, mode: str) -> Path | None:
     return path
 
 
-def _config(tmp_path: Path, *, session: str = "valid") -> DiaConfig:
-    return DiaConfig(
-        postal_code=POSTAL_CODE,
-        output_dir=tmp_path / "out",
-        base_url=BASE_URL,
-        page_size=PAGE_SIZE,
-        session_file=_session_file(tmp_path, session),
+def _definition(tmp_path: Path, *, session: str = "valid") -> DiaStore:
+    return DiaStore(
+        DiaSettings(
+            vtex=VtexSettings(base_url=BASE_URL, page_size=PAGE_SIZE),
+            session_file=_session_file(tmp_path, session),
+        )
     )
+
+
+def _run_settings(tmp_path: Path) -> RunSettings:
+    return RunSettings(postal_code=POSTAL_CODE, output_dir=tmp_path / "out")
 
 
 _CLOCK_TICKS: dict[Path, int] = {}
@@ -203,9 +229,17 @@ def _clock_for(tmp_path: Path) -> Callable[[], datetime]:
     return clock
 
 
-def _run(tmp_path: Path, transport: StoreTransport, *, session: str = "valid"):
-    return run_dia(
-        _config(tmp_path, session=session),
+def _run(
+    tmp_path: Path,
+    transport: StoreTransport,
+    *,
+    session: str = "valid",
+    http: HttpSettings | None = None,
+):
+    return run_store(
+        _definition(tmp_path, session=session),
+        _run_settings(tmp_path),
+        http or HttpSettings(),
         transport=transport,
         clock=_clock_for(tmp_path),
     )
@@ -277,32 +311,24 @@ def _exhausted(transport: StoreTransport, retries: int = 0) -> Callable[[], obje
 
 
 def test_expired_clubdia_session_is_component_failure(tmp_path: Path) -> None:
-    session = tmp_path / "session.json"
-    session.write_text(json.dumps({"cookies": {"session": "secret"}}))
-    config = DiaConfig(
-        postal_code="1000",
-        output_dir=tmp_path,
-        session_file=session,
-        base_url="https://shop.example",
-    )
-    context = RunContext("run", "dia", "1000", datetime(2026, 9, 23, tzinfo=UTC))
+    manifest, _ = _run(tmp_path, StoreTransport(20, clubdia="expired"))
 
-    coupons, result = _run_clubdia(config, context, ExpiredSessionTransport())
-
-    assert coupons is None
+    result = manifest.components["clubdia"]
     assert result.status == "authentication_required"
-    assert "secret" not in repr(result.to_dict())
+    assert result.normalized == 0
+    assert "SENTINEL" not in repr(result.to_dict())
+    assert not (_location(tmp_path) / "current" / "coupons.jsonl").exists()
 
 
 def test_missing_clubdia_session_is_actionable(tmp_path: Path) -> None:
-    config = DiaConfig(postal_code="1806", output_dir=tmp_path)
-    context = RunContext("run", "dia", "1806", datetime(2026, 9, 25, tzinfo=UTC))
+    transport = StoreTransport(20)
 
-    coupons, result = _run_clubdia(config, context, ExpiredSessionTransport())
+    manifest, _ = _run(tmp_path, transport, session="none")
 
-    assert coupons is None
+    result = manifest.components["clubdia"]
     assert result.status == "authentication_required"
     assert "NDEVSCRAP_DIA_SESSION_FILE" in result.errors[0]
+    assert not any(path.endswith("/token-by-user") for path, _ in transport.requests)
 
 
 def test_successful_run_publishes_current_with_verifiable_provenance(
@@ -593,3 +619,212 @@ def test_session_material_never_reaches_output_or_logs(
     for sentinel in SENTINELS:
         assert sentinel not in output
     assert "SENTINEL" not in caplog.text
+
+
+def _offer_price(product: dict[str, object], price: float) -> dict[str, object]:
+    items = product["items"]
+    assert isinstance(items, list)
+    items[0]["sellers"][0]["commertialOffer"]["Price"] = price
+    return product
+
+
+def _mixed_second_page() -> dict[str, object]:
+    duplicate = _offer_price(_product(0), 1.0)
+    invalid = _product(1009)
+    invalid["productName"] = ""
+    invalid["items"][0]["nameComplete"] = ""  # type: ignore[index]
+    return {
+        "products": [
+            *(_product(1000 + index) for index in range(5, 8)),
+            duplicate,
+            invalid,
+        ],
+        "recordsFiltered": 10,
+    }
+
+
+def test_streaming_deduplicates_and_counts_across_partitions(tmp_path: Path) -> None:
+    transport = StoreTransport(10, partitions=("almacen", "bebidas"))
+    transport.page_hooks[("bebidas", 2)] = _mixed_second_page
+
+    manifest, _ = _run(tmp_path, transport)
+
+    catalog = manifest.components["catalog"]
+    assert manifest.status == "success"
+    assert (catalog.discovered, catalog.normalized) == (20, 18)
+    assert (catalog.rejected, catalog.duplicates) == (1, 1)
+    assert catalog.discovered == (
+        catalog.normalized + catalog.rejected + catalog.duplicates
+    )
+    current = _location(tmp_path) / "current" / "products.jsonl"
+    rows = [json.loads(line) for line in current.read_text("utf-8").splitlines()]
+    assert len(rows) == 18
+    first_sku = [row for row in rows if row["sku_id"] == "sku-0"]
+    assert [row["selling_price"] for row in first_sku] == ["100.25"]
+    _assert_current_provenance(tmp_path)
+
+
+def test_rows_are_written_before_the_next_page_is_requested(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[tuple[object, ...]] = []
+
+    class RecordingTransport(StoreTransport):
+        def request(self, request: HttpRequest) -> HttpResponse:
+            page = request.params.get("page")
+            events.append(("request", request.url.rsplit("/", 1)[-1], page))
+            return super().request(request)
+
+    real = FileSnapshotStore.write_normalized
+
+    def spy(self, component, rows):
+        def tap():
+            for row in rows:
+                events.append(("row", component))
+                yield row
+
+        return real(self, component, tap())
+
+    monkeypatch.setattr(FileSnapshotStore, "write_normalized", spy)
+
+    _run(tmp_path, RecordingTransport(20))
+
+    second_page = events.index(("request", "almacen", 2))
+    assert events[:second_page].count(("row", "catalog")) == PAGE_SIZE
+
+
+def test_clubdia_structural_failure_persists_no_raw_or_rejected_pages(
+    tmp_path: Path,
+) -> None:
+    manifest, destination = _run(
+        tmp_path, StoreTransport(20, clubdia="malformed-payload")
+    )
+
+    clubdia = manifest.components["clubdia"]
+    assert manifest.status == "partial_success"
+    assert clubdia.status == "failed"
+    assert clubdia.errors == ["ValueError: ClubDIA request failed"]
+    output = tmp_path / "out"
+    assert [path for path in output.rglob("*") if path.name == "clubdia"] == []
+    assert not (destination / "normalized" / "coupons.jsonl").exists()
+
+
+def test_clubdia_redirect_requires_authentication(tmp_path: Path) -> None:
+    manifest, _ = _run(tmp_path, StoreTransport(20, clubdia="redirect"))
+
+    clubdia = manifest.components["clubdia"]
+    assert manifest.status == "partial_success"
+    assert clubdia.status == "authentication_required"
+    assert clubdia.errors == ["ClubDIA session rejected with HTTP 302"]
+
+
+def test_manifest_v2_reports_each_component(tmp_path: Path) -> None:
+    manifest, destination = _run(tmp_path, StoreTransport(20))
+
+    data = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
+    assert data == manifest.to_dict()
+    assert data["schema_version"] == "2"
+    assert (data["platform"], data["store"]) == ("vtex", "dia")
+    assert data["location"] == {"postal_code": POSTAL_CODE}
+    assert data["package_version"] == __version__
+    assert "connector_version" not in data
+    assert "postal_code" not in data
+    catalog = data["components"]["catalog"]
+    clubdia = data["components"]["clubdia"]
+    assert (catalog["connector_id"], catalog["connector_version"]) == (
+        "vtex-intelligent-search",
+        "1.0.0",
+    )
+    assert (clubdia["connector_id"], clubdia["connector_version"]) == (
+        "dia-club-coupons",
+        "1.1.0",
+    )
+    assert catalog["requests"] == 5
+    assert catalog["http_status_counts"] == {"200": 5}
+    assert clubdia["requests"] == 2
+    assert clubdia["http_status_counts"] == {"200": 2}
+    assert catalog["published"] is True
+    assert clubdia["published"] is True
+    assert catalog["duplicates"] == 0
+    assert (destination / "raw" / "catalog").is_dir()
+    assert not (destination / "raw" / "clubdia").exists()
+    for component in (catalog, clubdia):
+        assert component["duration_seconds"] >= 0
+        assert component["retries"] == 0
+
+
+def test_manifest_marks_unpublished_components(tmp_path: Path) -> None:
+    manifest, _ = _run(tmp_path, StoreTransport(20, clubdia="expired"))
+
+    clubdia = manifest.components["clubdia"].to_dict()
+    assert clubdia["published"] is False
+    assert clubdia["http_status_counts"] == {"401": 1}
+    assert manifest.components["catalog"].published is True
+
+
+def test_configuration_hash_ignores_session_path_but_not_http_settings(
+    tmp_path: Path,
+) -> None:
+    for name in ("a", "b", "c"):
+        (tmp_path / name).mkdir()
+    first, _ = _run(tmp_path / "a", StoreTransport(20))
+    moved = tmp_path / "b"
+    second, _ = run_store(
+        DiaStore(
+            DiaSettings(
+                vtex=VtexSettings(base_url=BASE_URL, page_size=PAGE_SIZE),
+                session_file=_session_file(moved, "no-order-form"),
+            )
+        ),
+        _run_settings(moved),
+        HttpSettings(),
+        transport=StoreTransport(20),
+        clock=_clock_for(moved),
+    )
+    faster, _ = _run(
+        tmp_path / "c", StoreTransport(20), http=HttpSettings(requests_per_second=2)
+    )
+
+    assert first.configuration_hash == second.configuration_hash
+    assert first.configuration_hash != faster.configuration_hash
+
+
+def test_run_logs_are_json_lines_without_session_material(tmp_path: Path) -> None:
+    stream = io.StringIO()
+    configure_logging(stream=stream)
+
+    manifest, _ = _run(tmp_path, StoreTransport(20, clubdia="chained"))
+
+    lines = [json.loads(line) for line in stream.getvalue().splitlines()]
+    assert lines
+    for line in lines:
+        assert line["run_id"] == manifest.run_id
+        assert line["store"] == "dia"
+    events = [line.get("event") for line in lines]
+    assert events[0] == "run_started"
+    assert events[-1] == "run_finished"
+    finished = [line for line in lines if line.get("event") == "component_finished"]
+    assert [line["component"] for line in finished] == ["catalog", "clubdia"]
+    assert events.count("component_started") == 2
+    assert "SENTINEL" not in stream.getvalue()
+
+
+def test_failed_publication_is_logged_with_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stream = io.StringIO()
+    configure_logging(stream=stream)
+
+    def locked(self, manifest, *, outcome, published):
+        raise PermissionError("current directory is locked")
+
+    monkeypatch.setattr(FileSnapshotStore, "publish", locked)
+
+    with pytest.raises(PermissionError):
+        _run(tmp_path, StoreTransport(20))
+
+    last = json.loads(stream.getvalue().splitlines()[-1])
+    assert last["event"] == "run_failed"
+    assert last["exc_type"] == "PermissionError"
+    assert last["store"] == "dia"
+    assert last["run_id"]

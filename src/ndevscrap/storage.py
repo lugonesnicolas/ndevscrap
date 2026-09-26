@@ -9,19 +9,42 @@ import os
 import re
 import shutil
 import zlib
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from collections.abc import Set as AbstractSet
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from .contracts import CatalogOutcome, RawRecord
-from .models import CouponSnapshot, ProductSnapshot, RunManifest
+from .contracts import NormalizedRecord, RawRecord, SnapshotOutcome, StoredComponent
+from .models import RunManifest
 
 _SAFE = re.compile(r"[^a-zA-Z0-9_.-]+")
+_IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9_-]*")
+_WINDOWS_DEVICES = frozenset(
+    {"con", "prn", "aux", "nul"}
+    | {f"com{number}" for number in range(1, 10)}
+    | {f"lpt{number}" for number in range(1, 10)}
+)
 _INDEX_KIND = "current-index"
 _INDEX_VERSION = "1"
-_COMPONENT_FILES = {"catalog": "products.jsonl", "clubdia": "coupons.jsonl"}
 _RESUMABLE_ENTRIES = frozenset({"raw", "checkpoint.json"})
+
+
+def is_safe_identifier(value: object) -> bool:
+    """Accept names usable as a single path component on every platform."""
+    return (
+        isinstance(value, str)
+        and _IDENTIFIER.fullmatch(value) is not None
+        and value not in _WINDOWS_DEVICES
+    )
+
+
+def is_safe_output_file(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and value.endswith(".jsonl")
+        and is_safe_identifier(value.removesuffix(".jsonl"))
+    )
 
 
 class FileSnapshotStore:
@@ -43,7 +66,14 @@ class FileSnapshotStore:
         postal_code: str,
         snapshot_date: date,
         run_id: str,
+        components: Mapping[str, StoredComponent],
     ) -> None:
+        if not components or not all(
+            is_safe_identifier(name) and is_safe_output_file(item.output_file)
+            for name, item in components.items()
+        ):
+            raise ValueError("snapshot components need safe names and output files")
+        self._components = dict(components)
         self._root = output_dir.resolve()
         self._store = _safe_name(store)
         self._postal_code = _safe_name(postal_code)
@@ -98,42 +128,39 @@ class FileSnapshotStore:
         ):
             return None
 
-    def write_products(self, products: Iterable[ProductSnapshot]) -> int:
-        return _write_jsonl(
-            self._staging / "normalized" / "products.jsonl",
-            (product.to_dict() for product in products),
-        )
+    def write_normalized(self, component: str, rows: Iterable[NormalizedRecord]) -> int:
+        """Stream rows to the component file; it only appears once complete."""
+        path = self._staging / "normalized" / self._output_file(component)
+        temporary = path.with_name(f"{path.name}.tmp")
+        try:
+            count = _write_jsonl(temporary, (row.to_dict() for row in rows))
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
+        os.replace(temporary, path)
+        return count
 
-    def write_coupons(self, coupons: Iterable[CouponSnapshot]) -> int:
-        return _write_jsonl(
-            self._staging / "normalized" / "coupons.jsonl",
-            (coupon.to_dict() for coupon in coupons),
-        )
-
-    def previous_product_count(self) -> int | None:
+    def published_count(self, component: str) -> int | None:
         index = _read_index(self._current / "manifest.json")
         if index is not None:
-            entry = index["components"].get("catalog")
+            entry = index["components"].get(component)
             if isinstance(entry, dict) and isinstance(entry.get("records"), int):
                 return entry["records"]
-        return _count_rows(self._current / "products.jsonl")
+        return _count_rows(self._current / self._output_file(component))
 
     def publish(
         self,
         manifest: RunManifest,
         *,
-        catalog_outcome: CatalogOutcome,
-        publish_coupons: bool,
+        outcome: SnapshotOutcome,
+        published: AbstractSet[str],
     ) -> Path:
+        self._check_publication(outcome, published)
         index = self._load_index()
-        published = {
-            "catalog": catalog_outcome == "accepted",
-            "clubdia": publish_coupons,
-        }
-        if catalog_outcome == "accepted":
+        if outcome == "accepted":
             return self._publish_accepted(manifest, index, published)
-        if catalog_outcome == "failed_transient":
-            destination = self._record_transient_attempt(manifest, publish_coupons)
+        if outcome == "failed_transient":
+            destination = self._record_transient_attempt(manifest, published)
         else:
             destination = self._archive_staging(manifest)
         current_staging = self._build_current(
@@ -145,6 +172,24 @@ class FileSnapshotStore:
     def abort(self) -> None:
         if self._staging.exists():
             _safe_rmtree(self._staging, self._root)
+
+    def _output_file(self, component: str) -> str:
+        try:
+            return self._components[component].output_file
+        except KeyError:
+            raise ValueError(f"undeclared snapshot component {component!r}") from None
+
+    def _check_publication(
+        self, outcome: SnapshotOutcome, published: AbstractSet[str]
+    ) -> None:
+        unknown = set(published) - set(self._components)
+        if unknown:
+            raise ValueError(f"undeclared components in publication: {sorted(unknown)}")
+        critical = {name for name, item in self._components.items() if item.critical}
+        if bool(critical & set(published)) != (outcome == "accepted"):
+            raise ValueError(
+                "the critical component is published only when it was accepted"
+            )
 
     def _clear_staging_for_resume(self) -> None:
         for entry in self._staging.iterdir():
@@ -161,7 +206,7 @@ class FileSnapshotStore:
         self,
         manifest: RunManifest,
         index: dict[str, Any],
-        published: dict[str, bool],
+        published: AbstractSet[str],
     ) -> Path:
         _write_json(self._staging / "manifest.json", manifest.to_dict())
         archived: Path | None = None
@@ -224,14 +269,16 @@ class FileSnapshotStore:
         return destination
 
     def _record_transient_attempt(
-        self, manifest: RunManifest, publish_coupons: bool
+        self, manifest: RunManifest, published: AbstractSet[str]
     ) -> Path:
         destination = self._new_attempt_path(manifest.run_id, manifest.finished_at)
         destination.mkdir(parents=True)
-        coupons = self._staging / "normalized" / "coupons.jsonl"
-        if publish_coupons and coupons.exists():
-            (destination / "normalized").mkdir()
-            shutil.copy2(coupons, destination / "normalized" / "coupons.jsonl")
+        for component in sorted(published):
+            filename = self._output_file(component)
+            source = self._staging / "normalized" / filename
+            if source.exists():
+                (destination / "normalized").mkdir(exist_ok=True)
+                shutil.copy2(source, destination / "normalized" / filename)
         _write_json(destination / "manifest.json", manifest.to_dict())
         return destination
 
@@ -241,7 +288,7 @@ class FileSnapshotStore:
         index: dict[str, Any],
         files_root: Path,
         recorded_root: Path,
-        published: dict[str, bool],
+        published: AbstractSet[str],
     ) -> Path:
         """Stage current from ``files_root``; record paths under ``recorded_root``."""
         current_staging = (
@@ -251,10 +298,14 @@ class FileSnapshotStore:
             _safe_rmtree(current_staging, self._root)
         current_staging.mkdir()
         components: dict[str, Any] = index["components"]
-        for component, filename in _COMPONENT_FILES.items():
+        declared_files = {
+            item.output_file.casefold() for item in self._components.values()
+        }
+        for component, item in self._components.items():
+            filename = item.output_file
             target = current_staging / filename
             source = files_root / "normalized" / filename
-            if published[component] and source.exists():
+            if component in published and source.exists():
                 shutil.copy2(source, target)
                 components[component] = self._run_entry(
                     manifest, component, target, recorded_root / "normalized" / filename
@@ -263,6 +314,22 @@ class FileSnapshotStore:
                 shutil.copy2(self._current / filename, target)
             else:
                 components.pop(component, None)
+        for component in [name for name in components if name not in self._components]:
+            # A component the definition no longer declares keeps its published
+            # file only when the index entry names a safe, existing, unclaimed file.
+            filename = (
+                components[component].get("file")
+                if isinstance(components[component], dict)
+                else None
+            )
+            if (
+                is_safe_output_file(filename)
+                and filename.casefold() not in declared_files
+                and (self._current / filename).is_file()
+            ):
+                shutil.copy2(self._current / filename, current_staging / filename)
+            else:
+                components.pop(component)
         index["last_attempt"] = {
             "run_id": manifest.run_id,
             "status": manifest.status,
@@ -284,8 +351,8 @@ class FileSnapshotStore:
                 "last_attempt": None,
             }
         components: dict[str, Any] = index["components"]
-        for component, filename in _COMPONENT_FILES.items():
-            path = self._current / filename
+        for component, item in self._components.items():
+            path = self._current / item.output_file
             if component not in components and path.exists():
                 components[component] = _legacy_entry(path)
         return index
