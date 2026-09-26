@@ -193,7 +193,10 @@
       `HttpStatusError`.
     - Una request pública sigue a mano hasta 5 saltos, cada uno sujeto al
       rate limit, sólo si `Location` resuelve al mismo esquema HTTPS, host y
-      puerto que la request original. Se valida antes de enviar.
+      puerto que la request original. Se valida antes de enviar, con el mismo
+      parser que usa el envío (`requests` + `urllib3`), y se rechaza todo
+      destino con credenciales, barra invertida o caracteres de control. La
+      misma regla valida la URL base de `VtexSettings`.
     - Un salto a otro origen o a `http`, un `3xx` sin `Location` o más de 5
       saltos levantan `UnexpectedRedirectError` sin enviar nada más y sin
       reintento.
@@ -253,6 +256,9 @@
     `duration_seconds`.
   - Si hay excepción, agrega `exc_type`.
   - Nunca serializa `exc_info`, traceback, `args` ni otros `extra`.
+  - Los registros de loggers ajenos a `ndevscrap` (urllib3, `py.warnings`) se
+    emiten con el mensaje fijo `"external log record"`, porque su mensaje
+    interpolado puede contener headers crudos.
 
   El runner emite los eventos de `REQ-009` y elimina el log de traceback en
   `DEBUG` de 0005. La CLI configura el logging al empezar. Los errores previos

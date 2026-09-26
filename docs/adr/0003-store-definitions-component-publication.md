@@ -61,8 +61,10 @@ Esta decisión refina el nivel "configuración de tienda" de ADR-0001.
   snapshot. Una tienda con dos fuentes igual de críticas necesitará revisar
   esta decisión.
 - La clasificación de errores sensibles depende de que la definición marque
-  correctamente sus componentes; la validación de la composición rechaza un
-  componente sensible que persista raw.
+  correctamente sus componentes: todo componente que use un `SessionProvider`
+  debe declararse sensible. La validación de la composición rechaza un
+  componente sensible que persista raw, pero no puede detectar uno sensible
+  mal declarado.
 - Los mensajes y nombres de archivo de DIA se conservan porque salen de su
   definición.
 - Un componente crítico no puede manejar material de sesión, porque sin raw

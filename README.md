@@ -108,11 +108,34 @@ python scripts/extract_dia_session.py "captura-día.har"
 ```
 
 El script conserva sólo el material funcional mínimo en
-`output/secrets/dia-session.json`, una ruta ignorada por Git. Luego defina
-`NDEVSCRAP_DIA_SESSION_FILE` según `.env.example`. Nunca incluya la sesión en
-argumentos, logs o archivos versionados. Si falta o expira, el catálogo público
-puede publicarse pero la CLI devuelve estado parcial y conserva el último
-`current` válido de cupones.
+`.secrets/dia-session.json`, un directorio ignorado por Git y por Docker; en
+POSIX el archivo se crea con permisos `0600` y en Windows rigen las ACL del
+perfil. Dentro del repositorio sólo acepta rutas bajo `.secrets/`. Si el
+repositorio vive en una carpeta sincronizada (OneDrive, Dropbox), `.secrets/`
+también se sincroniza: en ese caso use `--output` con una ruta local fuera de
+esa carpeta. Luego defina
+`NDEVSCRAP_DIA_SESSION_FILE` según `.env.example`: la sesión se lee sólo desde
+esa variable, nunca de una ubicación implícita. Si todavía la tiene en
+`output/secrets/`, apunte la variable a esa ruta o muévala a `.secrets/`. Nunca
+incluya la sesión en argumentos, logs o archivos versionados. Si falta o expira,
+el catálogo público puede publicarse pero la CLI devuelve estado parcial y
+conserva el último `current` válido de cupones.
+
+El transporte HTTP se configura con `NDEVSCRAP_HTTP_TIMEOUT_SECONDS` (20 s por
+defecto), `NDEVSCRAP_HTTP_REQUESTS_PER_SECOND` (1, máximo 2),
+`NDEVSCRAP_HTTP_MAX_RETRIES` (3) y `NDEVSCRAP_HTTP_MAX_RETRY_AFTER_SECONDS`
+(120). Un valor inválido termina con código `1` antes de escribir resultados.
+El transporte no usa proxies, certificados ni credenciales `.netrc` del entorno
+(`HTTPS_PROXY`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`), por lo que una red con
+inspección TLS no está soportada. Las requests con sesión nunca siguen
+redirects y las cookies de respuesta no se guardan.
+
+Los logs se emiten por stderr como JSON, una línea por evento, con `run_id`,
+`store` y `component`; nunca incluyen headers, cookies, tokens ni tracebacks. La
+línea JSON final de resultado sigue saliendo por stdout. El manifest de cada
+corrida (`schema_version` 2) informa plataforma, tienda, ubicación, versión del
+paquete y, por componente, conector, conteos, duplicados, requests, códigos
+HTTP, reintentos, duración y si se publicó.
 
 La misma CLI está disponible en Docker:
 
