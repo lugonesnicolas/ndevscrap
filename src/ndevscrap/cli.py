@@ -36,8 +36,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             config = DiaConfig.from_environment(args.postal_code, args.output)
             manifest, destination = run_dia(config)
-        except (OSError, ValueError) as exc:
+        except ValueError as exc:
             logging.getLogger(__name__).error("configuration error: %s", exc)
+            return 1
+        except OSError as exc:
+            logging.getLogger(__name__).error(
+                "storage error: %s: %s", type(exc).__name__, exc
+            )
             return 1
         print(
             json.dumps(

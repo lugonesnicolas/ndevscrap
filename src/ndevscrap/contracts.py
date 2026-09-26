@@ -6,9 +6,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Protocol, TypeVar
+from typing import Any, Literal, Protocol, TypeVar
 
 from .models import CouponSnapshot, ProductSnapshot, RunManifest
+
+CatalogOutcome = Literal["accepted", "quarantined", "failed", "failed_transient"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +103,8 @@ class SnapshotStore(Protocol):
 
     def write_raw(self, component: str, record: RawRecord) -> None: ...
 
+    def write_rejected(self, component: str, record: RawRecord) -> None: ...
+
     def read_raw(self, component: str, key: str) -> RawRecord | None: ...
 
     def write_products(self, products: Iterable[ProductSnapshot]) -> int: ...
@@ -113,7 +117,7 @@ class SnapshotStore(Protocol):
         self,
         manifest: RunManifest,
         *,
-        publish_catalog: bool,
+        catalog_outcome: CatalogOutcome,
         publish_coupons: bool,
     ) -> Path: ...
 

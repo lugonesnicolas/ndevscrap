@@ -71,8 +71,23 @@ uv run ndevscrap run dia --postal-code 1806 --output output
 ```
 
 El código postal piloto predeterminado es `1806`, por lo que también se puede
-omitir `--postal-code`. La salida diaria queda en `output/dia/1806/` con raw
-público comprimido, JSONL normalizado, manifest y una vista `current`.
+omitir `--postal-code`. La salida queda en `output/dia/1806/`:
+
+```text
+<fecha>/                     último intento aceptado del día: raw gzip,
+                             normalized JSONL y manifest de la corrida
+attempts/<fecha>/<run_id>/   intentos en cuarentena o fallidos y snapshots
+                             aceptados que fueron reemplazados
+current/                     products.jsonl, coupons.jsonl y un índice con
+                             hash y origen de cada archivo publicado
+.staging-<fecha>/            sólo tras un fallo transitorio, para reanudar
+```
+
+`current` sólo cambia con datos que superaron los controles de calidad. La
+línea base de volumen se toma del catálogo publicado en `current`. En la salida
+JSON final de la CLI, `snapshot` es `<fecha>/` si el catálogo fue aceptado o
+`attempts/<fecha>/<run_id>/` en otro caso; los códigos de salida son `0`
+(éxito), `2` (éxito parcial) y `1` (fallo).
 
 ClubDIA forma parte de la corrida desde la primera versión. La sesión se entrega
 en un archivo JSON local no versionado con las cookies funcionales VTEX y el
