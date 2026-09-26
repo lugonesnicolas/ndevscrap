@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from ..contracts import (
+    AuthenticationRequiredError,
     ConnectorMetadata,
     HttpRequest,
     RawRecord,
@@ -19,7 +20,7 @@ from ..contracts import (
 from ..models import CouponSnapshot
 
 
-class ClubDiaAuthenticationError(RuntimeError):
+class ClubDiaAuthenticationError(AuthenticationRequiredError):
     """The supplied VTEX session cannot access personalized ClubDIA data."""
 
 

@@ -3,6 +3,7 @@
 .pytest_cache
 .ruff_cache
 output
+.secrets
 .env
 .env.*
 !.env.example

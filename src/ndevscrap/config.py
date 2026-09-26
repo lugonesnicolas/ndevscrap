@@ -1,64 +1,137 @@
-"""Typed runtime configuration."""
+"""Typed runtime configuration shared by every store."""
 
 from __future__ import annotations
 
 import hashlib
 import json
-import os
+import math
+import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from typing import Any
+
+TIMEOUT_VARIABLE = "NDEVSCRAP_HTTP_TIMEOUT_SECONDS"
+RATE_VARIABLE = "NDEVSCRAP_HTTP_REQUESTS_PER_SECOND"
+RETRIES_VARIABLE = "NDEVSCRAP_HTTP_MAX_RETRIES"
+RETRY_AFTER_VARIABLE = "NDEVSCRAP_HTTP_MAX_RETRY_AFTER_SECONDS"
+CONTACT_VARIABLE = "NDEVSCRAP_CONTACT"
+_INTEGER = re.compile(r"-?[0-9]+")
+_PRINTABLE_ASCII = re.compile(r"[\x20-\x7e]*")
+_MAX_CONTACT_LENGTH = 200
 
 
 @dataclass(frozen=True, slots=True)
-class DiaConfig:
-    postal_code: str
-    output_dir: Path
-    base_url: str = "https://diaonline.supermercadosdia.com.ar"
-    locale: str = "es-AR"
-    currency: str = "ARS"
-    country: str = "ARG"
-    timezone: str = "America/Argentina/Buenos_Aires"
-    sales_channel: int = 1
-    page_size: int = 50
+class HttpSettings:
     timeout_seconds: float = 20.0
     requests_per_second: float = 1.0
     max_retries: int = 3
-    session_file: Path | None = None
+    max_retry_after_seconds: float = 120.0
+
+    def validate(self) -> None:
+        _check_range(TIMEOUT_VARIABLE, self.timeout_seconds, 0, 300)
+        _check_range(RATE_VARIABLE, self.requests_per_second, 0, 2)
+        if not 0 <= self.max_retries <= 10:
+            raise ValueError(f"{RETRIES_VARIABLE} must be an integer in [0, 10]")
+        _check_range(RETRY_AFTER_VARIABLE, self.max_retry_after_seconds, 0, 3600)
+
+    @classmethod
+    def from_environment(cls, environ: Mapping[str, str]) -> HttpSettings:
+        defaults = cls()
+        settings = cls(
+            timeout_seconds=_float(environ, TIMEOUT_VARIABLE, defaults.timeout_seconds),
+            requests_per_second=_float(
+                environ, RATE_VARIABLE, defaults.requests_per_second
+            ),
+            max_retries=_integer(environ, RETRIES_VARIABLE, defaults.max_retries),
+            max_retry_after_seconds=_float(
+                environ, RETRY_AFTER_VARIABLE, defaults.max_retry_after_seconds
+            ),
+        )
+        settings.validate()
+        return settings
+
+
+@dataclass(frozen=True, slots=True)
+class RunSettings:
+    postal_code: str
+    output_dir: Path
     contact: str | None = None
 
     def validate(self) -> None:
         if not self.postal_code.strip():
             raise ValueError("postal_code is required")
-        parsed = urlparse(self.base_url)
-        if parsed.scheme != "https" or not parsed.netloc:
-            raise ValueError("base_url must be an absolute HTTPS URL")
-        if not 1 <= self.page_size <= 50:
-            raise ValueError("page_size must be between 1 and 50")
-        if self.timeout_seconds <= 0:
-            raise ValueError("timeout_seconds must be positive")
-        if self.requests_per_second <= 0:
-            raise ValueError("requests_per_second must be positive")
-        if not 0 <= self.max_retries <= 10:
-            raise ValueError("max_retries must be between 0 and 10")
+        if self.contact is not None and (
+            len(self.contact) > _MAX_CONTACT_LENGTH
+            or not _PRINTABLE_ASCII.fullmatch(self.contact)
+        ):
+            raise ValueError(
+                f"{CONTACT_VARIABLE} must be printable ASCII of at most "
+                f"{_MAX_CONTACT_LENGTH} characters"
+            )
 
     @classmethod
-    def from_environment(cls, postal_code: str, output_dir: Path) -> DiaConfig:
-        session_path = os.getenv("NDEVSCRAP_DIA_SESSION_FILE")
-        return cls(
-            postal_code=postal_code,
-            output_dir=output_dir,
-            base_url=os.getenv(
-                "NDEVSCRAP_DIA_BASE_URL",
-                "https://diaonline.supermercadosdia.com.ar",
-            ).rstrip("/"),
-            session_file=Path(session_path) if session_path else None,
-            contact=os.getenv("NDEVSCRAP_CONTACT"),
-        )
+    def from_environment(
+        cls, postal_code: str, output_dir: Path, environ: Mapping[str, str]
+    ) -> RunSettings:
+        contact = _value(environ, CONTACT_VARIABLE)
+        settings = cls(postal_code=postal_code, output_dir=output_dir, contact=contact)
+        settings.validate()
+        return settings
 
-    def public_hash(self) -> str:
-        values = asdict(self)
-        values["output_dir"] = str(self.output_dir)
-        values["session_file"] = bool(self.session_file)
+
+def configuration_hash(
+    *,
+    store_id: str,
+    platform: str,
+    postal_code: str,
+    http: HttpSettings,
+    store_settings: Mapping[str, Any],
+    contact_configured: bool,
+) -> str:
+    """Hash the effective public configuration; never paths or secret values."""
+    values = {
+        "store": store_id,
+        "platform": platform,
+        "location": {"postal_code": postal_code},
+        "http": asdict(http),
+        "store_settings": dict(store_settings),
+        "contact_configured": contact_configured,
+    }
+    try:
         canonical = json.dumps(values, sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(canonical.encode()).hexdigest()
+    except (TypeError, ValueError):
+        raise ValueError("store public settings must be JSON serializable") from None
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _value(environ: Mapping[str, str], name: str) -> str | None:
+    value = environ.get(name, "").strip()
+    return value or None
+
+
+def _float(environ: Mapping[str, str], name: str, default: float) -> float:
+    value = _value(environ, name)
+    if value is None:
+        return default
+    try:
+        number = float(value)
+    except ValueError:
+        raise ValueError(f"{name} must be a number") from None
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be a finite number")
+    return number
+
+
+def _integer(environ: Mapping[str, str], name: str, default: int) -> int:
+    value = _value(environ, name)
+    if value is None:
+        return default
+    if not _INTEGER.fullmatch(value):
+        raise ValueError(f"{name} must be a decimal integer")
+    return int(value)
+
+
+def _check_range(name: str, value: float, low: float, high: float) -> None:
+    if not (math.isfinite(value) and low < value <= high):
+        raise ValueError(f"{name} must be in ({low}, {high}]")

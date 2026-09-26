@@ -8,9 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
-from ..config import DiaConfig
 from ..contracts import (
     ConnectorMetadata,
     HttpRequest,
@@ -20,10 +19,62 @@ from ..contracts import (
     Transport,
 )
 from ..models import ProductSnapshot
+from ..transport import https_origin
 
 
 class CatalogCompletenessError(RuntimeError):
     """Raised rather than returning a truncated search result."""
+
+
+@dataclass(frozen=True, slots=True)
+class VtexSettings:
+    """Platform configuration for one VTEX storefront.
+
+    The location (postal code) comes from the run context, not from here.
+    """
+
+    base_url: str
+    locale: str = "es-AR"
+    currency: str = "ARS"
+    sales_channel: int = 1
+    page_size: int = 50
+    max_pages: int = 50
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "base_url", self.base_url.strip().removesuffix("/"))
+
+    def validate(self) -> None:
+        parts = urlsplit(self.base_url)
+        if (
+            https_origin(self.base_url) is None
+            or parts.scheme != "https"
+            or not parts.hostname
+            or parts.username is not None
+            or parts.password is not None
+            or parts.path
+            or parts.query
+            or parts.fragment
+            or "?" in self.base_url
+            or "#" in self.base_url
+        ):
+            raise ValueError(
+                "base_url must be an HTTPS origin without credentials, path, "
+                "query or fragment"
+            )
+        if not 1 <= self.page_size <= 50:
+            raise ValueError("page_size must be between 1 and 50")
+        if not 1 <= self.max_pages <= 50:
+            raise ValueError("max_pages must be between 1 and 50")
+
+    def public_settings(self) -> dict[str, str | int]:
+        return {
+            "base_url": self.base_url,
+            "locale": self.locale,
+            "currency": self.currency,
+            "sales_channel": self.sales_channel,
+            "page_size": self.page_size,
+            "max_pages": self.max_pages,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,12 +92,14 @@ class VtexConnector:
         schema_version="1",
     )
 
-    def __init__(self, config: DiaConfig, transport: Transport) -> None:
-        self._config = config
+    def __init__(self, settings: VtexSettings, transport: Transport) -> None:
+        self._settings = settings
         self._transport = transport
-        self._search_url = f"{config.base_url}/api/intelligent-search/v1/product-search"
+        self._search_url = (
+            f"{settings.base_url}/api/intelligent-search/v1/product-search"
+        )
         self._categories_url = (
-            f"{config.base_url}/api/catalog_system/pub/category/tree/3"
+            f"{settings.base_url}/api/catalog_system/pub/category/tree/3"
         )
 
     def discover(self, context: RunContext) -> Iterable[SourceItem]:
@@ -75,7 +128,7 @@ class VtexConnector:
     def _discover_partition(
         self, node: CategoryNode, context: RunContext
     ) -> Iterable[SourceItem]:
-        first_request = self._page_request(node.slug_path, page=1)
+        first_request = self._page_request(node.slug_path, 1, context)
         first_response = self._transport.request(first_request)
         first_record = RawRecord(
             key=_page_key(node.slug_path, 1),
@@ -84,7 +137,7 @@ class VtexConnector:
             fetched_at=datetime.now(UTC),
         )
         total = _integer(first_record.payload.get("recordsFiltered"))
-        capacity = self._config.page_size * 50
+        capacity = self._settings.page_size * self._settings.max_pages
         if total > capacity:
             yield SourceItem(
                 key=f"probe:{_partition_name(node.slug_path)}",
@@ -110,14 +163,16 @@ class VtexConnector:
             request=first_request,
             prefetched=first_record,
         )
-        pages = math.ceil(total / self._config.page_size)
+        pages = math.ceil(total / self._settings.page_size)
         for page in range(2, pages + 1):
             yield SourceItem(
                 key=_page_key(node.slug_path, page),
-                request=self._page_request(node.slug_path, page),
+                request=self._page_request(node.slug_path, page, context),
             )
 
-    def _page_request(self, slug_path: tuple[str, ...], page: int) -> HttpRequest:
+    def _page_request(
+        self, slug_path: tuple[str, ...], page: int, context: RunContext
+    ) -> HttpRequest:
         facets = "/".join(
             value
             for level, slug in enumerate(slug_path, start=1)
@@ -128,10 +183,10 @@ class VtexConnector:
             url=f"{self._search_url}/{facets}",
             params={
                 "page": page,
-                "count": self._config.page_size,
-                "locale": self._config.locale,
-                "sc": self._config.sales_channel,
-                "zip-code": self._config.postal_code,
+                "count": self._settings.page_size,
+                "locale": self._settings.locale,
+                "sc": self._settings.sales_channel,
+                "zip-code": context.postal_code,
                 "hideUnavailableItems": "false",
             },
         )
@@ -196,7 +251,7 @@ class VtexConnector:
                     ),
                     brand=str(product.get("brand") or ""),
                     categories=_string_tuple(product.get("categories")),
-                    product_url=_product_url(self._config.base_url, product),
+                    product_url=_product_url(self._settings.base_url, product),
                     image_urls=_image_urls(item.get("images")),
                     seller_id=str(seller.get("sellerId") or ""),
                     seller_name=str(seller.get("sellerName") or ""),
@@ -204,7 +259,7 @@ class VtexConnector:
                     available_quantity=quantity,
                     list_price=_decimal(offer.get("ListPrice")),
                     selling_price=price,
-                    currency=self._config.currency,
+                    currency=self._settings.currency,
                     postal_code=context.postal_code,
                     captured_at=context.captured_at,
                     source_url=record.source_url,
