@@ -1,7 +1,8 @@
 # Contribuir a NDevScrap
 
 Este documento describe el flujo cotidiano. La arquitectura normativa está en
-[docs/architecture.md](docs/architecture.md) y el proceso de especificación en
+[docs/architecture.md](docs/architecture.md), la operación del conector DIA en
+[docs/operations.md](docs/operations.md) y el proceso de especificación en
 [docs/sdd/README.md](docs/sdd/README.md).
 
 ## 1. Preparar el entorno
