@@ -1,60 +1,62 @@
+[![CI](https://github.com/lugonesnicolas/ndevscrap/actions/workflows/ci.yml/badge.svg)](https://github.com/lugonesnicolas/ndevscrap/actions/workflows/ci.yml)
+
 # NDevScrap
 
-**Adquisición modular de datos para retail: pipelines Python reproducibles que transforman datos públicos y autorizados en snapshots validados y trazables.**
+**Modular retail data acquisition: reproducible Python pipelines that turn public and authorized data into validated, traceable snapshots.**
 
-NDevScrap es una base orientada a operación para adquirir datos de retail. Separa contratos de conectores, ejecución, transporte, controles de calidad y almacenamiento para que una integración de tienda pueda evolucionar sin convertirse en un script aislado.
+NDevScrap is a production-oriented foundation for acquiring retail data. It keeps connector contracts, execution, transport, quality gates and storage separate, so a store integration can evolve without turning into a one-off script.
 
-La implementación actual adquiere el catálogo público de DIA Argentina mediante VTEX. Cuando se configura explícitamente una sesión autorizada de ClubDIA, también recolecta metadata de cupones permitida. El repositorio incluye CLI local, imagen Docker, pruebas deterministas y workflows de calidad y seguridad en GitHub Actions.
+The current implementation acquires the public DIA Argentina catalog through VTEX. When an authorized ClubDIA session is explicitly configured, it also collects the permitted coupon metadata. The repository ships a local CLI, a Docker image, a deterministic test suite, and quality and security workflows on GitHub Actions.
 
-## Capacidades
+## Capabilities
 
-- Composición modular de tiendas y conectores con contratos públicos tipados.
-- Adquisición API-first mediante VTEX; automatización de navegador es una alternativa arquitectónica, no parte del flujo DIA actual.
-- Capas raw, normalized y current con procedencia y publicación atómica.
-- Normalización en streaming, deduplicación y controles de calidad antes de publicar.
-- Reintentos acotados, rate limiting y logs JSON estructurados sin material de requests.
-- Snapshots idempotentes, reanudación de fallos transitorios del catálogo y manifests por componente.
-- Fixtures deterministas de pytest, controles Ruff, ejecución Docker y CI.
-- Spec-Driven Development (SDD), ADRs y catálogo reutilizable de plataformas.
+- Modular store and connector composition with typed public contracts.
+- API-first acquisition through VTEX; browser automation is an architectural option, not part of the current DIA flow.
+- Raw, normalized and current data layers with provenance and atomic publication.
+- Streaming normalization, deduplication and quality gates before publication.
+- Bounded retries, rate limiting and structured JSON logs that never include request material.
+- Idempotent snapshots, recovery from transient catalog failures and per-component manifests.
+- Deterministic pytest fixtures, Ruff checks, Docker execution and CI.
+- Spec-Driven Development (SDD), ADRs and a reusable platform catalog.
 
-## Arquitectura
+## Architecture
 
 ```mermaid
 flowchart TD
-    store[DIA Argentina / VTEX] --> connector[Definición de tienda y conector]
-    connector --> transport[Transporte HTTP<br/>rate limiting y reintentos]
-    transport --> extraction[Descubrimiento y extracción]
-    extraction --> raw[raw<br/>registros fuente comprimidos]
-    raw --> normalization[Normalización en streaming]
-    normalization --> quality[Controles de calidad<br/>deduplicación]
-    quality --> normalized[normalized<br/>snapshots JSONL]
-    normalized --> current[current<br/>último dato aceptado]
-    quality --> manifest[Manifest y logs JSON]
+    store[DIA Argentina / VTEX] --> connector[Store definition and connector]
+    connector --> transport[HTTP transport<br/>rate limiting and retries]
+    transport --> extraction[Discovery and extraction]
+    extraction --> raw[raw<br/>compressed source records]
+    raw --> normalization[Streaming normalization]
+    normalization --> quality[Quality gates<br/>deduplication]
+    quality --> normalized[normalized<br/>JSONL snapshots]
+    normalized --> current[current<br/>latest accepted data]
+    quality --> manifest[Manifest and JSON logs]
 ```
 
-La [guía de arquitectura](docs/architecture.md) explica los límites y trade-offs. Este diagrama representa el flujo DIA implementado; scheduler, runtimes cloud y adquisición con navegador no están implementados.
+The [architecture guide](docs/architecture.md) explains the boundaries and trade-offs. The diagram shows the implemented DIA flow; a scheduler, cloud runtimes and browser-based acquisition are not implemented.
 
-## Implementación actual: DIA Argentina sobre VTEX
+## Current implementation: DIA Argentina on VTEX
 
-La definición de tienda `dia` compone dos componentes independientes:
+DIA Argentina is the functional integration today, not a demo. The `dia` store definition composes two independent components:
 
-| Componente | Acceso | Salida | Publicación |
+| Component | Access | Output | Publication |
 | --- | --- | --- | --- |
-| Catálogo DIA | VTEX Intelligent Search público | `products.jsonl` | Crítico; publica sólo cuando pasa controles de calidad. |
-| Cupones ClubDIA | Sesión autorizada del operador | `coupons.jsonl` | Opcional y sensible; nunca persiste respuestas raw de sesión. |
+| DIA catalog | Public VTEX Intelligent Search | `products.jsonl` | Critical; published only when quality gates pass. |
+| ClubDIA coupons | Authorized operator session | `coupons.jsonl` | Optional and sensitive; raw session responses are never persisted. |
 
-Los precios y la disponibilidad se contextualizan por código postal. El código piloto predeterminado es `1806`. Sin una sesión ClubDIA configurada o válida, el catálogo público puede publicarse y la CLI devuelve `partial_success` (código `2`), conservando la última salida de cupones válida.
+Prices and availability depend on the postal code; the default pilot code is `1806`. ClubDIA requires an explicitly configured authorized session. Without a configured or valid session, the public catalog can still be published and the CLI returns `partial_success` (exit code `2`), keeping the last valid coupon output.
 
-## Inicio rápido
+## Quick start
 
-Requiere Python 3.12 y [uv](https://docs.astral.sh/uv/).
+Requires Python 3.12 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync --all-groups
 uv run ndevscrap run dia --postal-code 1806 --output output
 ```
 
-El comando escribe logs JSON por stderr y un objeto de resultado por stdout:
+The command writes JSON logs to stderr and one result object to stdout:
 
 ```json
 {
@@ -64,11 +66,11 @@ El comando escribe logs JSON por stderr y un objeto de resultado por stdout:
 }
 ```
 
-Es una muestra sanitizada de forma: `run_id` y las rutas se generan en cada ejecución. La [guía de operación](docs/operations.md) cubre configuración, layout de salida, sesiones, códigos de salida y Docker.
+This is a sanitized sample of the shape: `run_id` and paths are generated on every run. Exit codes are `0` for `success`, `2` for `partial_success` and `1` for configuration, storage or execution errors. The [operations guide](docs/operations.md) (in Spanish) covers configuration, output layout, sessions, exit codes and Docker.
 
-## Salida y evidencia de ejecución
+## Output and execution evidence
 
-El catálogo normalizado usa registros JSONL versionados. Una fila representativa y sanitizada corresponde al contrato público `ProductSnapshot`:
+The normalized catalog uses versioned JSONL records. The following sanitized row is an abridged illustration of the public `ProductSnapshot` contract:
 
 ```json
 {
@@ -85,19 +87,21 @@ El catálogo normalizado usa registros JSONL versionados. Una fila representativ
 }
 ```
 
-Cada corrida registra un manifest versionado con hash de configuración pública efectiva y conteos, reintentos, códigos HTTP, duración y resultado de publicación por componente. Headers, cookies y tokens no aparecen en logs, manifests ni outputs.
+Each run records a versioned manifest with the hash of the effective public configuration and, per component, counts, retries, HTTP status codes, duration and publication outcome. Headers, cookies and tokens never appear in logs, manifests or outputs.
 
-## Decisiones de ingeniería
+## Engineering decisions
 
-- [ADR-0001](docs/adr/0001-modular-connectors.md): monolito modular y composición de conectores.
-- [ADR-0002](docs/adr/0002-api-first-browser-isolation.md): API primero, HTML estático después y navegador sólo cuando se justifica.
-- [ADR-0003](docs/adr/0003-store-definitions-component-publication.md): definiciones de tienda y publicación independiente por componente.
+Decision records are written in Spanish.
 
-La implementación DIA/VTEX y su evidencia de validación viven en las [iniciativas SDD](docs/sdd/README.md). El [catálogo de VTEX](docs/platforms/vtex/README.md) mantiene conocimiento versionado de la plataforma separado de la configuración de una tienda.
+- [ADR-0001](docs/adr/0001-modular-connectors.md): modular monolith and connector composition.
+- [ADR-0002](docs/adr/0002-api-first-browser-isolation.md): API first, static HTML second, browser only when justified.
+- [ADR-0003](docs/adr/0003-store-definitions-component-publication.md): store definitions and independent per-component publication.
 
-## Pruebas y calidad
+The DIA/VTEX implementation and its validation evidence live in the [SDD initiatives](docs/sdd/README.md). The [VTEX platform catalog](docs/platforms/vtex/README.md) keeps versioned platform knowledge separate from any single store's configuration.
 
-La suite determinista usa fixtures locales; no contacta DIA. Cubre parsing VTEX, normalización, fallos de transporte, reintentos, manejo de sesión, umbrales de calidad, procedencia de outputs, publicación idempotente y contratos de CLI.
+## Testing and quality
+
+The deterministic suite uses local fixtures and never contacts DIA. It covers VTEX parsing, normalization, transport failures, retries, session handling, quality thresholds, output provenance, idempotent publication and CLI contracts.
 
 ```bash
 uv sync --all-groups
@@ -108,31 +112,33 @@ python scripts/validate_repository.py
 python scripts/validate_repository.py --self-test
 ```
 
-GitHub Actions ejecuta pruebas, Ruff y validación documental/SDD en pushes y pull requests. También incluye CodeQL, dependency review y Dependabot.
+GitHub Actions runs tests, Ruff and documentation/SDD validation on pushes and pull requests. The repository also uses CodeQL, dependency review and Dependabot.
 
-## Estructura del proyecto
+## Project structure
 
 ```text
-src/ndevscrap/    CLI, contratos, transporte, almacenamiento y conectores
-tests/            suite pytest determinista y fixtures sanitizadas
-docs/             arquitectura, ADRs, operación y evidencia SDD
-scripts/          validación del repositorio y extracción de sesión autorizada
-output/           resultados locales generados, ignorados por Git
+src/ndevscrap/    CLI, contracts, transport, storage and connectors
+tests/            deterministic pytest suite and sanitized fixtures
+docs/             architecture, ADRs, operations and SDD evidence
+scripts/          repository validation and authorized session extraction
+output/           generated local results, ignored by Git
 ```
 
-## Documentación
+## Documentation
 
-- [Arquitectura](docs/architecture.md)
-- [Operación y Docker](docs/operations.md)
+Most in-depth documents are written in Spanish.
+
+- [Architecture](docs/architecture.md)
+- [Operations and Docker](docs/operations.md)
 - [Architecture Decision Records](docs/adr/README.md)
-- [Flujo e iniciativas SDD](docs/sdd/README.md)
-- [Catálogo de plataformas](docs/platforms/README.md)
-- [Contribuir](CONTRIBUTING.md)
+- [SDD workflow and initiatives](docs/sdd/README.md)
+- [Platform catalog](docs/platforms/README.md)
+- [Contributing](CONTRIBUTING.md)
 
-## Adquisición responsable de datos
+## Responsible data acquisition
 
-Use sólo accesos públicos o autorizados explícitamente. Configure límites conservadores, revise los términos aplicables y `robots.txt`, y mantenga las sesiones fuera de control de versiones. NDevScrap no elude autenticación ni controles antiabuso. La [guía de operación](docs/operations.md) describe el modelo de seguridad de sesión y transporte.
+Use only public or explicitly authorized access. Configure conservative limits, review the applicable terms and `robots.txt`, and keep sessions out of version control. NDevScrap does not bypass authentication or anti-abuse controls. The [operations guide](docs/operations.md) describes the session and transport security model.
 
-## Licencia
+## License
 
-Publicado bajo la [licencia MIT](LICENSE).
+Released under the [MIT License](LICENSE).
