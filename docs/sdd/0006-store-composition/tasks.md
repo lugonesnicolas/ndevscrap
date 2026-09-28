@@ -24,6 +24,6 @@
   `.env.example`, `README.md`, el ADR-0003 y su índice para `REQ-006`,
   `REQ-010` y `REQ-011`, y registrar en
   `0004-dia-vtex-connector/validation.md` las brechas que cierra 0006.
-- [ ] `TASK-009` Ejecutar pytest, Ruff, validadores y mutaciones en Windows,
+- [x] `TASK-009` Ejecutar pytest, Ruff, validadores y mutaciones en Windows,
   obtener las revisiones QA de contrato y de seguridad, incorporar hallazgos y
   registrar la evidencia de `AC-001` a `AC-012`.
