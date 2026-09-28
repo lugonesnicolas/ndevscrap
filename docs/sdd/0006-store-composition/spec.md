@@ -1,10 +1,10 @@
 ---
 id: 0006-store-composition
 title: Composición de tiendas, publicación por componente y endurecimiento del transporte
-status: validation
+status: done
 owner: maintainers
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-09-27
 approval: user-approved-2026-09-26
 ---
 

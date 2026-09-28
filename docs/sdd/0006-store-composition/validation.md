@@ -3,9 +3,9 @@
 ## Resultado
 
 Implementación completa y validada localmente en Windows el 2026-09-26 sobre
-`17f69e5`, en la rama `feat/0006-store-composition`. La iniciativa queda en
-`validation` hasta que el pull request registre CI verde en Ubuntu (`AC-012`);
-con esa evidencia se marca `TASK-009` y el estado pasa a `done`.
+`17f69e5`, en la rama `feat/0006-store-composition`. La iniciativa se cierra
+el 2026-09-27 tras comprobar CI verde en Ubuntu en el pull request #9
+(`AC-012`), integrado en `main` como `433f234`.
 
 ## Evidencia
 
@@ -100,7 +100,11 @@ con esa evidencia se marca `TASK-009` y el estado pasa a `done`.
   - `uv run ruff format --check --no-cache .`: OK, 76 archivos.
   - `python scripts/validate_repository.py`: OK.
   - `python scripts/validate_repository.py --self-test`: OK.
-- CI Ubuntu del pull request: pendiente.
+- CI Ubuntu del [pull request #9](https://github.com/lugonesnicolas/ndevscrap/pull/9),
+  integrado el 2026-09-26T23:48:50Z como `433f234`: todos los checks en verde.
+  [CI/Test](https://github.com/lugonesnicolas/ndevscrap/actions/runs/36280534327),
+  [Quality/validate](https://github.com/lugonesnicolas/ndevscrap/actions/runs/36280534312),
+  [Security/CodeQL y dependency review](https://github.com/lugonesnicolas/ndevscrap/actions/runs/36280534304).
 
 ## Criterios de aceptación
 
@@ -164,8 +168,10 @@ con esa evidencia se marca `TASK-009` y el estado pasa a `done`.
   `output/` y `.secrets` como archivo, `.gitignore` y `.dockerignore` ignoran
   `.secrets/`, y un `.secrets/dia-session.json` en el directorio de trabajo no
   se carga sin la variable.
-- `AC-012`: ADR-0003 aceptado y enlazado; pytest, Ruff y validadores correctos
-  en Windows. Pendiente la ejecución de CI en el pull request.
+- `AC-012`: satisfecho. ADR-0003 aceptado y enlazado; pytest, Ruff y validadores
+  correctos en Windows. Los checks CI/Test, Quality/validate, Security/CodeQL y
+  Security/Dependency review del pull request #9 concluyeron con `SUCCESS`
+  antes de su integración en `main` como `433f234`.
 
 ## Desviaciones
 
