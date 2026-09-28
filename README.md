@@ -1,186 +1,138 @@
 # NDevScrap
 
-NDevScrap es la base para construir y operar scrapers Python para múltiples
-tiendas y plataformas con contratos consistentes. El proyecto prioriza APIs y
-HTML estático, reserva el navegador para los casos que realmente lo necesitan y
-mantiene separadas la extracción, la ejecución y la persistencia.
+**Adquisición modular de datos para retail: pipelines Python reproducibles que transforman datos públicos y autorizados en snapshots validados y trazables.**
 
-El repositorio contiene la base Python, las validaciones y el primer conector
-VTEX/DIA con CLI local y Docker. Su evolución continúa mediante el ciclo SDD
-definido en este repositorio.
+NDevScrap es una base orientada a operación para adquirir datos de retail. Separa contratos de conectores, ejecución, transporte, controles de calidad y almacenamiento para que una integración de tienda pueda evolucionar sin convertirse en un script aislado.
 
-## Principios
+La implementación actual adquiere el catálogo público de DIA Argentina mediante VTEX. Cuando se configura explícitamente una sesión autorizada de ClubDIA, también recolecta metadata de cupones permitida. El repositorio incluye CLI local, imagen Docker, pruebas deterministas y workflows de calidad y seguridad en GitHub Actions.
 
-- Un monolito modular es el punto de partida; los límites internos deben permitir
-  separar componentes cuando el volumen lo justifique.
-- Un conector implementa un contrato estable y reutiliza componentes mediante
-  composición.
-- Las variaciones se modelan como plataforma, configuración de tienda y overrides
-  específicos, en ese orden.
-- La estrategia de acceso es API, luego HTML estático y finalmente Playwright.
-- Toda ejecución debe ser observable, reintentable e idempotente.
-- Los datos conservan su origen y avanzan por capas raw, normalized y current.
-- No se eluden controles de acceso ni medidas antiabuso.
+## Capacidades
 
-La descripción normativa y los trade-offs están en la
-[guía de arquitectura](docs/architecture.md). Las decisiones duraderas se
-registran como [ADR](docs/adr/README.md).
-El conocimiento reutilizable descubierto sobre APIs se mantiene en el
-[catálogo de plataformas](docs/platforms/README.md).
+- Composición modular de tiendas y conectores con contratos públicos tipados.
+- Adquisición API-first mediante VTEX; automatización de navegador es una alternativa arquitectónica, no parte del flujo DIA actual.
+- Capas raw, normalized y current con procedencia y publicación atómica.
+- Normalización en streaming, deduplicación y controles de calidad antes de publicar.
+- Reintentos acotados, rate limiting y logs JSON estructurados sin material de requests.
+- Snapshots idempotentes, reanudación de fallos transitorios del catálogo y manifests por componente.
+- Fixtures deterministas de pytest, controles Ruff, ejecución Docker y CI.
+- Spec-Driven Development (SDD), ADRs y catálogo reutilizable de plataformas.
 
-## Cómo se trabaja
+## Arquitectura
 
-Todo scraper o cambio funcional comienza con una iniciativa SDD. Antes de
-programar deben estar aprobados sus requisitos y su plan; al finalizar, la
-evidencia se registra junto al cambio.
-
-1. Leer la [guía de contribución](CONTRIBUTING.md).
-2. Crear la iniciativa desde las [plantillas SDD](docs/sdd/README.md) y, cuando
-   corresponda, iniciar o actualizar su ficha en el catálogo de plataformas.
-3. Aprobar `spec.md` y `plan.md`.
-4. Implementar las tareas manteniendo trazabilidad con los requisitos.
-5. Ejecutar las validaciones y completar `validation.md`.
-6. Abrir un pull request usando la plantilla del repositorio.
-
-El paquete [0001-repository-foundation](docs/sdd/0001-repository-foundation/spec.md)
-muestra el proceso completo aplicado a esta base documental.
-
-## Estructura objetivo
-
-```text
-src/                 CLI, contratos compartidos y conectores
-tests/               pruebas y fixtures HTML/JSON locales
-docs/                arquitectura, ADR e iniciativas SDD
-scripts/             herramientas de desarrollo sin lógica de scraping
-output/              resultados locales no versionados
-Dockerfile           imagen portable para ejecución headless
+```mermaid
+flowchart TD
+    store[DIA Argentina / VTEX] --> connector[Definición de tienda y conector]
+    connector --> transport[Transporte HTTP<br/>rate limiting y reintentos]
+    transport --> extraction[Descubrimiento y extracción]
+    extraction --> raw[raw<br/>registros fuente comprimidos]
+    raw --> normalization[Normalización en streaming]
+    normalization --> quality[Controles de calidad<br/>deduplicación]
+    quality --> normalized[normalized<br/>snapshots JSONL]
+    normalized --> current[current<br/>último dato aceptado]
+    quality --> manifest[Manifest y logs JSON]
 ```
 
-`src/` y `tests/` contienen el esqueleto y la iniciativa
-[0004-dia-vtex-connector](docs/sdd/0004-dia-vtex-connector/spec.md) incorpora la
-primera CLI y el conector VTEX/DIA.
+La [guía de arquitectura](docs/architecture.md) explica los límites y trade-offs. Este diagrama representa el flujo DIA implementado; scheduler, runtimes cloud y adquisición con navegador no están implementados.
 
-## Ejecutar DIA Online
+## Implementación actual: DIA Argentina sobre VTEX
 
-La integración pública usa VTEX Intelligent Search y requiere un código postal
-para contextualizar disponibilidad y precios:
+La definición de tienda `dia` compone dos componentes independientes:
+
+| Componente | Acceso | Salida | Publicación |
+| --- | --- | --- | --- |
+| Catálogo DIA | VTEX Intelligent Search público | `products.jsonl` | Crítico; publica sólo cuando pasa controles de calidad. |
+| Cupones ClubDIA | Sesión autorizada del operador | `coupons.jsonl` | Opcional y sensible; nunca persiste respuestas raw de sesión. |
+
+Los precios y la disponibilidad se contextualizan por código postal. El código piloto predeterminado es `1806`. Sin una sesión ClubDIA configurada o válida, el catálogo público puede publicarse y la CLI devuelve `partial_success` (código `2`), conservando la última salida de cupones válida.
+
+## Inicio rápido
+
+Requiere Python 3.12 y [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync --all-groups
 uv run ndevscrap run dia --postal-code 1806 --output output
 ```
 
-El código postal piloto predeterminado es `1806`, por lo que también se puede
-omitir `--postal-code`. La salida queda en `output/dia/1806/`:
-
-```text
-<fecha>/                     último intento aceptado del día: raw gzip,
-                             normalized JSONL y manifest de la corrida
-attempts/<fecha>/<run_id>/   intentos en cuarentena o fallidos y snapshots
-                             aceptados que fueron reemplazados
-current/                     products.jsonl, coupons.jsonl y un índice con
-                             hash y origen de cada archivo publicado
-.staging-<fecha>/            sólo tras un fallo transitorio, para reanudar
-```
-
-`current` sólo cambia con datos que superaron los controles de calidad. La
-línea base de volumen se toma del catálogo publicado en `current`. En la salida
-JSON final de la CLI, `snapshot` es `<fecha>/` si el catálogo fue aceptado o
-`attempts/<fecha>/<run_id>/` en otro caso; los códigos de salida son `0`
-(éxito), `2` (éxito parcial) y `1` (fallo).
-
-ClubDIA forma parte de la corrida desde la primera versión. La sesión se entrega
-en un archivo JSON local no versionado con las cookies funcionales VTEX y el
-`order-form-id` efímero que requiere la pantalla de cupones:
+El comando escribe logs JSON por stderr y un objeto de resultado por stdout:
 
 ```json
 {
-  "headers": {"order-form-id": "valor-secreto"},
-  "cookies": {"VtexIdclientAutCookie_diaio": "valor-secreto"}
+  "status": "success",
+  "run_id": "7b6f0d4a-8098-4a5d-b0a8-13ab4d92f7d1",
+  "snapshot": "output/dia/1806/2026-09-27"
 }
 ```
 
-Para renovar manualmente la sesión, inicie sesión en DIA, abra la pantalla
-ClubDIA, exporte un HAR autorizado y ejecute:
+Es una muestra sanitizada de forma: `run_id` y las rutas se generan en cada ejecución. La [guía de operación](docs/operations.md) cubre configuración, layout de salida, sesiones, códigos de salida y Docker.
 
-```bash
-python scripts/extract_dia_session.py "captura-día.har"
+## Salida y evidencia de ejecución
+
+El catálogo normalizado usa registros JSONL versionados. Una fila representativa y sanitizada corresponde al contrato público `ProductSnapshot`:
+
+```json
+{
+  "product_id": "1000",
+  "sku_id": "1000-1",
+  "name": "Producto de ejemplo",
+  "available": true,
+  "selling_price": "1250.00",
+  "currency": "ARS",
+  "postal_code": "1806",
+  "captured_at": "2026-09-27T12:00:00-03:00",
+  "source_url": "https://diaonline.supermercadosdia.com.ar/example",
+  "schema_version": "1"
+}
 ```
 
-El script conserva sólo el material funcional mínimo en
-`.secrets/dia-session.json`, un directorio ignorado por Git y por Docker; en
-POSIX el archivo se crea con permisos `0600` y en Windows rigen las ACL del
-perfil. Dentro del repositorio sólo acepta rutas bajo `.secrets/`. Si el
-repositorio vive en una carpeta sincronizada (OneDrive, Dropbox), `.secrets/`
-también se sincroniza: en ese caso use `--output` con una ruta local fuera de
-esa carpeta. Luego defina
-`NDEVSCRAP_DIA_SESSION_FILE` según `.env.example`: la sesión se lee sólo desde
-esa variable, nunca de una ubicación implícita. Si todavía la tiene en
-`output/secrets/`, apunte la variable a esa ruta o muévala a `.secrets/`. Nunca
-incluya la sesión en argumentos, logs o archivos versionados. Si falta o expira,
-el catálogo público puede publicarse pero la CLI devuelve estado parcial y
-conserva el último `current` válido de cupones.
+Cada corrida registra un manifest versionado con hash de configuración pública efectiva y conteos, reintentos, códigos HTTP, duración y resultado de publicación por componente. Headers, cookies y tokens no aparecen en logs, manifests ni outputs.
 
-El transporte HTTP se configura con `NDEVSCRAP_HTTP_TIMEOUT_SECONDS` (20 s por
-defecto), `NDEVSCRAP_HTTP_REQUESTS_PER_SECOND` (1, máximo 2),
-`NDEVSCRAP_HTTP_MAX_RETRIES` (3) y `NDEVSCRAP_HTTP_MAX_RETRY_AFTER_SECONDS`
-(120). Un valor inválido termina con código `1` antes de escribir resultados.
-El transporte no usa proxies, certificados ni credenciales `.netrc` del entorno
-(`HTTPS_PROXY`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`), por lo que una red con
-inspección TLS no está soportada. Las requests con sesión nunca siguen
-redirects y las cookies de respuesta no se guardan.
+## Decisiones de ingeniería
 
-Los logs se emiten por stderr como JSON, una línea por evento, con `run_id`,
-`store` y `component`; nunca incluyen headers, cookies, tokens ni tracebacks. La
-línea JSON final de resultado sigue saliendo por stdout. El manifest de cada
-corrida (`schema_version` 2) informa plataforma, tienda, ubicación, versión del
-paquete y, por componente, conector, conteos, duplicados, requests, códigos
-HTTP, reintentos, duración y si se publicó.
+- [ADR-0001](docs/adr/0001-modular-connectors.md): monolito modular y composición de conectores.
+- [ADR-0002](docs/adr/0002-api-first-browser-isolation.md): API primero, HTML estático después y navegador sólo cuando se justifica.
+- [ADR-0003](docs/adr/0003-store-definitions-component-publication.md): definiciones de tienda y publicación independiente por componente.
 
-La misma CLI está disponible en Docker:
+La implementación DIA/VTEX y su evidencia de validación viven en las [iniciativas SDD](docs/sdd/README.md). El [catálogo de VTEX](docs/platforms/vtex/README.md) mantiene conocimiento versionado de la plataforma separado de la configuración de una tienda.
+
+## Pruebas y calidad
+
+La suite determinista usa fixtures locales; no contacta DIA. Cubre parsing VTEX, normalización, fallos de transporte, reintentos, manejo de sesión, umbrales de calidad, procedencia de outputs, publicación idempotente y contratos de CLI.
 
 ```bash
-docker build -t ndevscrap .
-docker run --rm -v ./output:/app/output ndevscrap run dia \
-  --postal-code 1806 --output /app/output
-```
-
-Para incluir ClubDIA en Docker, monte el archivo de sesión como secreto de sólo
-lectura y defina `NDEVSCRAP_DIA_SESSION_FILE` dentro del contenedor.
-
-La programación diaria pertenece al host, por ejemplo Task Scheduler o cron.
-
-## Preparar el entorno
-
-Se usa [uv](https://docs.astral.sh/uv/) para gestionar Python 3.12 y las
-dependencias:
-
-```bash
-uv sync
+uv sync --all-groups
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
-```
-
-Cuando el primer conector añada configuración se creará `.env` desde
-`.env.example`. La futura CLI conservará la misma interfaz en local y en
-contenedores; los adaptadores cloud vivirán fuera de los conectores.
-
-## Validar este repositorio
-
-La documentación y los paquetes SDD se validan sin instalar dependencias:
-
-```bash
 python scripts/validate_repository.py
 python scripts/validate_repository.py --self-test
 ```
 
-GitHub Actions ejecuta estas comprobaciones en cada push y pull request. El
-workflow de CI ejecuta además `pytest` y Ruff sobre el proyecto Python.
+GitHub Actions ejecuta pruebas, Ruff y validación documental/SDD en pushes y pull requests. También incluye CodeQL, dependency review y Dependabot.
 
-## Operación responsable
+## Estructura del proyecto
 
-Las credenciales y los resultados sensibles nunca se versionan. Cada iniciativa
-de scraper debe evaluar términos del sitio, `robots.txt` cuando corresponda,
-timeouts, límites de frecuencia, retención y tratamiento de datos antes de ser
-aprobada.
+```text
+src/ndevscrap/    CLI, contratos, transporte, almacenamiento y conectores
+tests/            suite pytest determinista y fixtures sanitizadas
+docs/             arquitectura, ADRs, operación y evidencia SDD
+scripts/          validación del repositorio y extracción de sesión autorizada
+output/           resultados locales generados, ignorados por Git
+```
+
+## Documentación
+
+- [Arquitectura](docs/architecture.md)
+- [Operación y Docker](docs/operations.md)
+- [Architecture Decision Records](docs/adr/README.md)
+- [Flujo e iniciativas SDD](docs/sdd/README.md)
+- [Catálogo de plataformas](docs/platforms/README.md)
+- [Contribuir](CONTRIBUTING.md)
+
+## Adquisición responsable de datos
+
+Use sólo accesos públicos o autorizados explícitamente. Configure límites conservadores, revise los términos aplicables y `robots.txt`, y mantenga las sesiones fuera de control de versiones. NDevScrap no elude autenticación ni controles antiabuso. La [guía de operación](docs/operations.md) describe el modelo de seguridad de sesión y transporte.
+
+## Licencia
+
+Publicado bajo la [licencia MIT](LICENSE).

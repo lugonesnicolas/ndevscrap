@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ndevscrap"
 version = "0.1.0"
-description = "Portable, API-first scraping utilities."
+description = "Modular Python data acquisition for retail with reproducible, validated snapshots."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
