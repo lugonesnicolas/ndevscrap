@@ -2,7 +2,7 @@
 
 ## Resultado
 
-Validado el 2026-09-28 sin requests contra DIA. La release se registra tras integrar el pull request y confirmar CI en `main`.
+Validado el 2026-09-28 sin requests contra DIA. Pull request #12 integrado en `main` (`a855c7d`); `ci.yml` ejecutado por `workflow_dispatch` sobre ese commit: success. Release `v0.1.0` publicada desde ese commit.
 
 ## Evidencia
 
@@ -23,7 +23,7 @@ Validado el 2026-09-28 sin requests contra DIA. La release se registra tras inte
 - `AC-003`: satisfecho por el validador del repositorio.
 - `AC-004`: satisfecho por las validaciones indicadas.
 - `AC-005`: satisfecho por el inventario y las comprobaciones de `.gitignore`.
-- `AC-006`: pendiente hasta publicar la release; se registra en el pull request.
+- `AC-006`: satisfecho; release https://github.com/lugonesnicolas/ndevscrap/releases/tag/v0.1.0 apuntando a `a855c7d`.
 
 ## Desviaciones
 

@@ -1,7 +1,7 @@
 ---
 id: 0008-release-v0-1-0
 title: Cierre de portfolio y release v0.1.0
-status: in-progress
+status: done
 owner: Nicolás Ezequiel Lugones
 created: 2026-09-28
 updated: 2026-09-28
